@@ -98,7 +98,9 @@ ifeq ($(ENABLE_EXPENSIVE_CHECKS),1)
 endif
 
 LLVM_LIBEXECDIR = /usr/libexec
-LIBFFI_INCDIR = /usr/include/aarch64-linux-gnu
+
+# Edit this path to match your build environment setup.
+LIBFFI_INCDIR = /path/to/your/libffi/header/files
 
 CMAKE_OPTIONS = -DCMAKE_C_COMPILER:FILEPATH=$(CC)
 CMAKE_OPTIONS += -DCMAKE_CXX_COMPILER:FILEPATH=$(CXX)
