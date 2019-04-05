@@ -1,5 +1,6 @@
-## Cavium port of flang7. Includes LLVM, flang, clang, Polly, OpenMP,
-plus a (large) number of Cavium internal patches.
+## Cavium port of flang7.
+## Includes LLVM, flang, clang, Polly, OpenMP, plus a (large) number of
+Cavium internal patches.
 ========================================================================
 
 ## Building Flang:
