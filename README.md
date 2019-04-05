@@ -1,7 +1,6 @@
-## Cavium port of flang7.
-Includes LLVM, Polly and OpenMP plus a number of Cavium internal patches.
-=========================================================================
-
+## Cavium port of flang7. Includes LLVM, flang, clang, Polly, OpenMP,
+plus a (large) number of Cavium internal patches.
+========================================================================
 
 ## Building Flang:
 
@@ -65,5 +64,19 @@ your build system:
 %> cd build
 %> gmake -j16 >& make.out # T-shell syntax
 ```
-7. That's it!
+7. This version of Flang 7 supports math function vectorization via
+the SLEEF libraries:
+
+```
+https://sleef.org/
+```
+
+To build the SLEEF libraries, please follow the instructions at the SLEEF
+web site.
+
+The compile-line option to enable SLEEF in clang is:
+
+```
+-fveclib=SLEEF
+```
 
