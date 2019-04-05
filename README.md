@@ -81,3 +81,12 @@ The compile-line option to enable SLEEF in clang is:
 -fveclib=SLEEF
 ```
 
+To link with the SLEEF library, pass:
+
+```
+-lsleefgnuabi
+```
+
+on link-line.
+
+
