@@ -47,6 +47,13 @@ CMAKE_PREFIX = /path/to/your/desired/flang7/install
 LIBFFI_INCDIR = /path/to/your/libffi/header/files
 ```
 
+```
+# Flang libpgmath target CPU optimization
+CMAKE_OPTIONS += -DLLVM_FLANG_CPU_TARGET:STRING="thunderx2t99"
+
+For building on X86_64, set the value above to 'core-avx2'.
+```
+
 5. That's it. There are several packages that you must have installed on
 your build system:
 
