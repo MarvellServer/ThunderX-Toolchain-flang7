@@ -336,6 +336,7 @@ void __kmpc_fork_call(ident_t *loc, kmp_int32 argc, kmpc_micro microtask, ...) {
 #endif // KMP_STATS_ENABLED
 }
 
+#if defined(__aarch64__) && defined(KMP_ARCH_AARCH64) && (KMP_OS_LINUX)
 /*!
 @ingroup PARALLEL
 @param loc  source location information
@@ -404,6 +405,8 @@ void __kmpc_fork_call_fortran(ident_t *loc, kmp_int32 argc,
                     );
   }
 }
+
+#endif /* defined(__aarch64__) && defined(KMP_ARCH_AARCH64) && KMP_OS_LINUX */
 
 #if OMP_40_ENABLED
 /*!

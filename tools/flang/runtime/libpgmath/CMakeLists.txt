@@ -116,4 +116,8 @@ include(LibmathUtils)
 
 # Setup Source Code And Tests
 add_subdirectory(lib)
-add_subdirectory(test)
+
+if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64")
+  add_subdirectory(test)
+endif()
+
