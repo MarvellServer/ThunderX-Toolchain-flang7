@@ -21,15 +21,20 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "MCTargetDesc/AArch64FixupKinds.h"
 #include "AArch64GenInstrInfo.inc"
 using namespace llvm;
 
+static cl::opt<unsigned> BranchTargetAlignment(
+    "aarch64-branch-target-alignment", cl::Hidden, cl::init(15),
+    cl::desc("Align branch targets on this boundary"));
+
 namespace llvm {
 
-#ifndef _NDEBUG
+#ifndef NDEBUG
 static const char* getOpcodeName(unsigned Opcode) {
   const char *Name = "<unknown>";
 
@@ -207,10 +212,9 @@ unsigned AArch64BranchTargetAligner::getLoopIndexForNoOps(const MCInst &Inst) {
     return 0;
 
   if (NumOperands == 0)
-    return 15;
+    return BranchTargetAlignment.getValue();
 
   bool CanAlign = false;
-  unsigned R = 15;
 
   for (unsigned I = 0; I < NumOperands; ++I) {
     if (Inst.getOperand(I).isExpr()) {
@@ -280,7 +284,7 @@ unsigned AArch64BranchTargetAligner::getLoopIndexForNoOps(const MCInst &Inst) {
     }
   }
 
-  return CanAlign ? R : 0;
+  return CanAlign ? BranchTargetAlignment.getValue() : 0;
 }
 
 MCInst AArch64BranchTargetAligner::createNopInstruction() {
