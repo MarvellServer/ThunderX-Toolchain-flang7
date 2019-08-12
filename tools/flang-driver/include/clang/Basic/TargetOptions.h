@@ -35,6 +35,12 @@ public:
   /// If given, the name of the target CPU to generate code for.
   std::string CPU;
 
+  /// If given, the name of the target CPU micro-arch to generate code for.
+  std::string Arch;
+
+  /// If given, the name of the target micro-arch tuning to generate code for.
+  std::string Tune;
+
   /// If given, the unit to use for floating point math.
   std::string FPMath;
 
@@ -67,6 +73,12 @@ public:
   /// \brief If enabled, use 32-bit pointers for accessing const/local/shared
   /// address space.
   bool NVPTXUseShortPointers = false;
+
+  /// If given, only use fast math.
+  bool FastMath = false;
+
+  /// If given, only use finite math.
+  bool FiniteMathOnly = false;
 };
 
 }  // end namespace clang

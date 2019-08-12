@@ -48,6 +48,18 @@ static cl::opt<bool>
                    cl::desc("Call nonlazybind functions via direct GOT load"),
                    cl::init(false), cl::Hidden);
 
+static cl::opt<unsigned>
+FunctionAlignment("aarch64-function-alignment",
+                  cl::init(0),
+                  cl::desc("Align functions on this boundary (in bytes)."),
+                  cl::Hidden);
+
+static cl::opt<unsigned>
+LoopAlignment("aarch64-loop-alignment",
+              cl::init(0),
+              cl::desc("Align loops on this boundary (in bytes)."),
+              cl::Hidden);
+
 AArch64Subtarget &
 AArch64Subtarget::initializeSubtargetDependencies(StringRef FS,
                                                   StringRef CPUString) {
@@ -115,8 +127,10 @@ void AArch64Subtarget::initializeProperties() {
     break;
   case ThunderX2T99:
     CacheLineSize = 64;
-    PrefFunctionAlignment = 3;
-    PrefLoopAlignment = 2;
+    PrefFunctionAlignment = FunctionAlignment.getValue() ?
+                            std::log2(FunctionAlignment.getValue()) : 4;
+    PrefLoopAlignment = LoopAlignment.getValue() ?
+                        std::log2(LoopAlignment.getValue()) : 2;
     MaxInterleaveFactor = 4;
     PrefetchDistance = 128;
     MinPrefetchStride = 1024;

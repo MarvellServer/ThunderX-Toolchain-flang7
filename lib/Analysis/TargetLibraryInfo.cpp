@@ -524,6 +524,9 @@ static void initialize(TargetLibraryInfoImpl &TLI, const Triple &T,
 TargetLibraryInfoImpl::TargetLibraryInfoImpl() {
   // Default to everything being available.
   memset(AvailableArray, -1, sizeof(AvailableArray));
+  FiniteMathOnly = false;
+  FastMath = false;
+  HasExternalVectorLibMath = false;
 
   initialize(*this, Triple(), StandardNames);
 }
@@ -532,12 +535,18 @@ TargetLibraryInfoImpl::TargetLibraryInfoImpl(const Triple &T)
   : TT(T) {
   // Default to everything being available.
   memset(AvailableArray, -1, sizeof(AvailableArray));
+  FiniteMathOnly = false;
+  FastMath = false;
+  HasExternalVectorLibMath = false;
 
   initialize(*this, T, StandardNames);
 }
 
 TargetLibraryInfoImpl::TargetLibraryInfoImpl(const TargetLibraryInfoImpl &TLI)
-    : TT(TLI.TT), CustomNames(TLI.CustomNames),
+    : TT(TLI.TT), CPU(TLI.CPU), Arch(TLI.Arch), Tune(TLI.Tune),
+      FiniteMathOnly(TLI.FiniteMathOnly), FastMath(TLI.FastMath),
+      HasExternalVectorLibMath(TLI.HasExternalVectorLibMath),
+      CustomNames(TLI.CustomNames),
       ShouldExtI32Param(TLI.ShouldExtI32Param),
       ShouldExtI32Return(TLI.ShouldExtI32Return),
       ShouldSignExtI32Param(TLI.ShouldSignExtI32Param) {
@@ -547,7 +556,12 @@ TargetLibraryInfoImpl::TargetLibraryInfoImpl(const TargetLibraryInfoImpl &TLI)
 }
 
 TargetLibraryInfoImpl::TargetLibraryInfoImpl(TargetLibraryInfoImpl &&TLI)
-    : TT(std::move(TLI.TT)), CustomNames(std::move(TLI.CustomNames)),
+    : TT(std::move(TLI.TT)), CPU(std::move(TLI.CPU)),
+      Arch(std::move(TLI.Arch)), Tune(std::move(TLI.Tune)),
+      FiniteMathOnly(std::move(TLI.FiniteMathOnly)),
+      FastMath(std::move(TLI.FastMath)),
+      HasExternalVectorLibMath(std::move(TLI.HasExternalVectorLibMath)),
+      CustomNames(std::move(TLI.CustomNames)),
       ShouldExtI32Param(TLI.ShouldExtI32Param),
       ShouldExtI32Return(TLI.ShouldExtI32Return),
       ShouldSignExtI32Param(TLI.ShouldSignExtI32Param) {
@@ -559,6 +573,12 @@ TargetLibraryInfoImpl::TargetLibraryInfoImpl(TargetLibraryInfoImpl &&TLI)
 
 TargetLibraryInfoImpl &TargetLibraryInfoImpl::operator=(const TargetLibraryInfoImpl &TLI) {
   TT = TLI.TT;
+  CPU = TLI.CPU;
+  Arch = TLI.Arch;
+  Tune = TLI.Tune;
+  FiniteMathOnly = TLI.FiniteMathOnly;
+  FastMath = TLI.FastMath;
+  HasExternalVectorLibMath = TLI.HasExternalVectorLibMath;
   CustomNames = TLI.CustomNames;
   ShouldExtI32Param = TLI.ShouldExtI32Param;
   ShouldExtI32Return = TLI.ShouldExtI32Return;
@@ -569,6 +589,12 @@ TargetLibraryInfoImpl &TargetLibraryInfoImpl::operator=(const TargetLibraryInfoI
 
 TargetLibraryInfoImpl &TargetLibraryInfoImpl::operator=(TargetLibraryInfoImpl &&TLI) {
   TT = std::move(TLI.TT);
+  CPU = std::move(TLI.CPU);
+  Arch = std::move(TLI.Arch);
+  Tune = std::move (TLI.Tune);
+  FiniteMathOnly = std::move(TLI.FiniteMathOnly);
+  FastMath = std::move(TLI.FastMath);
+  HasExternalVectorLibMath = std::move(HasExternalVectorLibMath);
   CustomNames = std::move(TLI.CustomNames);
   ShouldExtI32Param = TLI.ShouldExtI32Param;
   ShouldExtI32Return = TLI.ShouldExtI32Return;
@@ -1305,12 +1331,36 @@ bool TargetLibraryInfoImpl::isValidProtoForLibFunc(const FunctionType &FTy,
             FTy.getParamType(1)->isIntegerTy(32));
 
   // New Intrinsics.
-  case LibFunc_lgamma_finite:
-  case LibFunc_lgammaf_finite:
-  case LibFunc_lgammal_finite:
+  case LibFunc_lgamma_r_finite:
+  case LibFunc_lgammaf_r_finite:
+  case LibFunc_lgammal_r_finite:
     return (NumParams == 2 && FTy.getReturnType()->isFloatingPointTy() &&
             FTy.getReturnType() == FTy.getParamType(0) &&
             FTy.getParamType(1)->isPointerTy());
+
+  case LibFunc_tgamma_finite:
+  case LibFunc_tgammaf_finite:
+  case LibFunc_tgammal_finite:
+    return (NumParams == 2 && FTy.getReturnType()->isFloatingPointTy() &&
+            FTy.getReturnType() == FTy.getParamType(0) &&
+            FTy.getParamType(1)->isPointerTy());
+
+  case LibFunc_lgamma_r:
+  case LibFunc_lgammaf_r:
+  case LibFunc_lgammal_r:
+    return (NumParams == 2 && FTy.getReturnType()->isFloatingPointTy() &&
+            FTy.getReturnType() == FTy.getParamType(0) &&
+            FTy.getParamType(1)->isPointerTy());
+
+#if 0
+  // This is handled by the tgamma case above.
+  case LibFunc___gamma_r_finite:
+  case LibFunc___gammaf_r_finite:
+  case LibFunc___gammal_r_finite:
+    return (NumParams == 2 && FTy.getReturnType()->isFloatingPointTy() &&
+            FTy.getReturnType() == FTy.getParamType(0) &&
+            FTy.getParamType(1)->isPointerTy());
+#endif
   // End New Intrinsics.
 
   case LibFunc_ffs:
@@ -1426,6 +1476,16 @@ void TargetLibraryInfoImpl::addVectorizableFunctions(ArrayRef<VecDesc> Fns) {
 
   ScalarDescs.insert(ScalarDescs.end(), Fns.begin(), Fns.end());
   llvm::sort(ScalarDescs.begin(), ScalarDescs.end(), compareByVectorFnName);
+}
+
+unsigned TargetLibraryInfoImpl::getMaxVectorWidthForTarget() const {
+  if (TT.getArch() == llvm::Triple::aarch64 ||
+      TT.getArch() == llvm::Triple::aarch64_be) {
+    if (CPU == "thunderx2t99" || Tune == "thunderx2t99")
+      return 128U;
+  }
+
+  return 0;
 }
 
 void TargetLibraryInfoImpl::addVectorizableFunctionsFromVecLib(
@@ -1626,6 +1686,14 @@ void TargetLibraryInfoImpl::addVectorizableFunctionsFromVecLib(
         { "llvm.atanh.v2f64", "_ZGVnN2v_atanh", 2 },
         { "llvm.atanh.v4f32", "_ZGVnN4v_atanhf", 4 },
 
+        { "ceil", "_ZGVnN2v_ceil", 2 },
+        { "ceil", "_ZGVnN4v_ceilf", 4 },
+        { "ceilf", "_ZGVnN4v_ceilf", 4 },
+        { "llvm.ceil.f64", "_ZGVnN2v_ceil", 2 },
+        { "llvm.ceil.f32", "_ZGVnN4v_ceilf", 4 },
+        { "llvm.ceil.v2f64", "_ZGVnN2v_ceil", 2 },
+        { "llvm.ceil.v4f32", "_ZGVnN4v_ceilf", 4 },
+
         { "cos", "_ZGVnN2v_cos", 2 },
         { "cos", "_ZGVnN4v_cosf", 4 },
         { "cosf", "_ZGVnN4v_cosf", 4 },
@@ -1666,15 +1734,23 @@ void TargetLibraryInfoImpl::addVectorizableFunctionsFromVecLib(
         { "llvm.exp10.v2f64", "_ZGVnN2v_exp10", 2 },
         { "llvm.exp10.v4f32", "_ZGVnN4v_exp10f", 4 },
 
+        { "floor", "_ZGVnN2v_floor", 2 },
+        { "floor", "_ZGVnN4v_floorf", 4 },
+        { "floorf", "_ZGVnN4v_floorf", 4 },
+        { "llvm.floor.f64", "_ZGVnN2v_floor", 2 },
+        { "llvm.floor.f32", "_ZGVnN4v_floorf", 4 },
+        { "llvm.floor.v2f64", "_ZGVnN2v_floor", 2 },
+        { "llvm.floor.v4f32", "_ZGVnN4v_floorf", 4 },
+
         { "lgamma", "_ZGVnN2v_lgamma", 2 },
         { "lgamma", "_ZGVnN4v_lgammaf", 4 },
         { "lgammaf", "_ZGVnN4v_lgammaf", 4 },
+        { "gamma", "_ZGVnN2v_lgamma", 2 },
+        { "gamma", "_ZGVnN4v_lgammaf", 4 },
+        { "gammaf", "_ZGVnN4v_lgammaf", 4 },
         { "__lgamma_r_finite", "_ZGVnN2v_lgamma", 2 },
         { "__lgamma_r_finite", "_ZGVnN4v_lgammaf", 4 },
         { "__lgammaf_r_finite", "_ZGVnN4v_lgammaf", 4 },
-        { "lgamma_r_finite", "_ZGVnN2v_lgamma", 2 },
-        { "lgamma_r_finite", "_ZGVnN4v_lgammaf", 4 },
-        { "lgammaf_r_finite", "_ZGVnN4v_lgammaf", 4 },
         { "lgamma_r", "_ZGVnN2v_lgamma", 2 },
         { "lgamma_r", "_ZGVnN4v_lgammaf", 4 },
         { "lgammaf_r", "_ZGVnN4v_lgammaf", 4 },
@@ -1763,7 +1839,544 @@ void TargetLibraryInfoImpl::addVectorizableFunctionsFromVecLib(
         { "llvm.tgamma.v2f64", "_ZGVnN2v_tgamma", 2 },
         { "llvm.tgamma.v4f32", "_ZGVnN4v_tgammaf", 4 },
       };
-      addVectorizableFunctions(AArch64TwoAndFourLaneVecFuncs);
+
+      const VecDesc AArch64TwoAndFourLaneVecFuncsFastMath[] = {
+        { "acos", "_ZGVnN2v_acos_u35", 2 },
+        { "acos", "_ZGVnN4v_acosf_u35", 4 },
+        { "acosf", "_ZGVnN4v_acosf_u35", 4 },
+        { "llvm.acos.f64", "_ZGVnN2v_acos_u35", 2 },
+        { "llvm.acos.f32", "_ZGVnN4v_acosf_u35", 4 },
+        { "llvm.acos.v2f64", "_ZGVnN2v_acos_u35", 2 },
+        { "llvm.acos.v4f32", "_ZGVnN4v_acosf_u35", 4 },
+
+        { "asin", "_ZGVnN2v_asin_u35", 2 },
+        { "asin", "_ZGVnN4v_asinf_u35", 4 },
+        { "asinf", "_ZGVnN4v_asinf_u35", 4 },
+        { "llvm.asin.f64", "_ZGVnN2v_asin_u35", 2 },
+        { "llvm.asin.f32", "_ZGVnN4v_asinf_u35", 4 },
+        { "llvm.asin.v2f64", "_ZGVnN2v_asin_u35", 2 },
+        { "llvm.asin.v4f32", "_ZGVnN4v_asinf_u35", 4 },
+
+        { "atan", "_ZGVnN2v_atan_u35", 2 },
+        { "atan", "_ZGVnN4v_atanf_u35", 4 },
+        { "atanf", "_ZGVnN4v_atanf_u35", 4 },
+        { "llvm.atan.f64", "_ZGVnN2v_atan_u35", 2 },
+        { "llvm.atan.f32", "_ZGVnN4v_atanf_u35", 4 },
+        { "llvm.atan.v2f64", "_ZGVnN2v_atan_u35", 2 },
+        { "llvm.atan.v4f32", "_ZGVnN4v_atanf_u35", 4 },
+
+        { "atan2", "_ZGVnN2vv_atan2_u35", 2 },
+        { "atan2", "_ZGVnN4vv_atan2f_u35", 4 },
+        { "atan2f", "_ZGVnN4vv_atan2f_u35", 4 },
+        { "llvm.atan2.f64", "_ZGVnN2vv_atan2_u35", 2 },
+        { "llvm.atan2.f32", "_ZGVnN4vv_atan2f_u35", 4 },
+        { "llvm.atan2.v2f64", "_ZGVnN2vv_atan2_u35", 2 },
+        { "llvm.atan2.v4f32", "_ZGVnN4vv_atan2f_u35", 4 },
+
+        // atanh_u35 is not in SLEEF 3.4.0 yet.
+        // { "atanh", "_ZGVnN2v_atanh_u35", 2 },
+        // { "atanh", "_ZGVnN4v_atanhf_u35", 4 },
+        // { "atanhf", "_ZGVnN4v_atanhf_u35", 4 },
+        // { "llvm.atanh.f64", "_ZGVnN2v_atanh_u35", 2 },
+        // { "llvm.atanh.f32", "_ZGVnN4v_atanhf_u35", 4 },
+        // { "llvm.atanh.v2f64", "_ZGVnN2v_atanh_u35", 2 },
+        // { "llvm.atanh.v4f32", "_ZGVnN4v_atanhf_u35", 4 },
+
+        { "atanh", "_ZGVnN2v_atanh", 2 },
+        { "atanh", "_ZGVnN4v_atanhf", 4 },
+        { "atanhf", "_ZGVnN4v_atanhf", 4 },
+        { "llvm.atanh.f64", "_ZGVnN2v_atanh", 2 },
+        { "llvm.atanh.f32", "_ZGVnN4v_atanhf", 4 },
+        { "llvm.atanh.v2f64", "_ZGVnN2v_atanh", 2 },
+        { "llvm.atanh.v4f32", "_ZGVnN4v_atanhf", 4 },
+
+        { "cos", "_ZGVnN2v_cos_u35", 2 },
+        { "cos", "_ZGVnN4v_cosf_u35", 4 },
+        { "cosf", "_ZGVnN4v_cosf_u35", 4 },
+        { "llvm.cos.f64", "_ZGVnN2v_cos_u35", 2 },
+        { "llvm.cos.f32", "_ZGVnN4v_cosf_u35", 4 },
+        { "llvm.cos.v2f64", "_ZGVnN2v_cos_u35", 2 },
+        { "llvm.cos.v4f32", "_ZGVnN4v_cosf_u35", 4 },
+
+        { "cosh", "_ZGVnN2v_cosh_u35", 2 },
+        { "cosh", "_ZGVnN4v_coshf_u35", 4 },
+        { "coshf", "_ZGVnN4v_coshf_u35", 4 },
+        { "llvm.cosh.f64", "_ZGVnN2v_cosh_u35", 2 },
+        { "llvm.cosh.f32", "_ZGVnN4v_coshf_u35", 4 },
+        { "llvm.cosh.v2f64", "_ZGVnN2v_cosh_u35", 2 },
+        { "llvm.cosh.v4f32", "_ZGVnN4v_coshf_u35", 4 },
+
+        // exp_u35 is not in SLEEF 3.4.0 yet.
+        // { "exp", "_ZGVnN2v_exp_u35", 2 },
+        // { "exp", "_ZGVnN4v_expf_u35", 4 },
+        // { "expf", "_ZGVnN4v_expf_u35", 4 },
+        // { "llvm.exp.f64", "_ZGVnN2v_exp_u35", 2 },
+        // { "llvm.exp.f32", "_ZGVnN4v_expf_u35", 4 },
+        // { "llvm.exp.v2f64", "_ZGVnN2v_exp_u35", 2 },
+        // { "llvm.exp.v4f32", "_ZGVnN4v_expf_u35", 4 },
+
+        { "exp", "_ZGVnN2v_exp", 2 },
+        { "exp", "_ZGVnN4v_expf", 4 },
+        { "expf", "_ZGVnN4v_expf", 4 },
+        { "llvm.exp.f64", "_ZGVnN2v_exp", 2 },
+        { "llvm.exp.f32", "_ZGVnN4v_expf", 4 },
+        { "llvm.exp.v2f64", "_ZGVnN2v_exp", 2 },
+        { "llvm.exp.v4f32", "_ZGVnN4v_expf", 4 },
+
+        { "exp2", "_ZGVnN2v_exp2_u35", 2 },
+        { "exp2", "_ZGVnN4v_exp2f_u35", 4 },
+        { "exp2f", "_ZGVnN4v_exp2f_u35", 4 },
+        { "llvm.exp2.f64", "_ZGVnN2v_exp2_u35", 2 },
+        { "llvm.exp2.f32", "_ZGVnN4v_exp2f_u35", 4 },
+        { "llvm.exp2.v2f64", "_ZGVnN2v_exp2_u35", 2 },
+        { "llvm.exp2.v4f32", "_ZGVnN4v_exp2f_u35", 4 },
+
+        { "exp10", "_ZGVnN2v_exp10_u35", 2 },
+        { "exp10", "_ZGVnN4v_exp10f_u35", 4 },
+        { "exp10f", "_ZGVnN4v_exp10f_u35", 4 },
+        { "llvm.exp10.f64", "_ZGVnN2v_exp10_u35", 2 },
+        { "llvm.exp10.f32", "_ZGVnN4v_exp10f_u35", 4 },
+        { "llvm.exp10.v2f64", "_ZGVnN2v_exp10_u35", 2 },
+        { "llvm.exp10.v4f32", "_ZGVnN4v_exp10f_u35", 4 },
+
+        // lgamma_u35 is not in SLEEF 3.4.0 yet.
+        // { "lgamma", "_ZGVnN2v_lgamma_u35", 2 },
+        // { "lgamma", "_ZGVnN4v_lgammaf_u35", 4 },
+        // { "lgammaf", "_ZGVnN4v_lgammaf_u35", 4 },
+        // { "gamma", "_ZGVnN2v_lgamma_u35", 2 },
+        // { "gamma", "_ZGVnN4v_lgammaf_u35", 4 },
+        // { "gammaf", "_ZGVnN4v_lgammaf_u35", 4 },
+        // { "__lgamma_r_finite", "_ZGVnN2v_lgamma_u35", 2 },
+        // { "__lgamma_r_finite", "_ZGVnN4v_lgammaf_u35", 4 },
+        // { "__lgammaf_r_finite", "_ZGVnN4v_lgammaf_u35", 4 },
+        // { "lgamma_r", "_ZGVnN2v_lgamma_u35", 2 },
+        // { "lgamma_r", "_ZGVnN4v_lgammaf_u35", 4 },
+        // { "lgammaf_r", "_ZGVnN4v_lgammaf_u35", 4 },
+        // { "llvm.lgamma.f64", "_ZGVnN2v_lgamma_u35", 2 },
+        // { "llvm.lgamma.f32", "_ZGVnN4v_lgammaf_u35", 4 },
+        // { "llvm.lgamma.v2f64", "_ZGVnN2v_lgamma_u35", 2 },
+        // { "llvm.lgamma.v4f32", "_ZGVnN4v_lgammaf_u35", 4 },
+
+        { "lgamma", "_ZGVnN2v_lgamma", 2 },
+        { "lgamma", "_ZGVnN4v_lgammaf", 4 },
+        { "lgammaf", "_ZGVnN4v_lgammaf", 4 },
+        { "__lgamma", "_ZGVnN2v_lgamma", 2 },
+        { "__lgamma", "_ZGVnN4v_lgammaf", 4 },
+        { "__lgammaf", "_ZGVnN4v_lgammaf", 4 },
+        { "gamma", "_ZGVnN2v_lgamma", 2 },
+        { "gamma", "_ZGVnN4v_lgammaf", 4 },
+        { "gammaf", "_ZGVnN4v_lgammaf", 4 },
+        { "__gamma", "_ZGVnN2v_lgamma", 2 },
+        { "__gamma", "_ZGVnN4v_lgammaf", 4 },
+        { "__gammaf", "_ZGVnN4v_lgammaf", 4 },
+        { "__lgamma_r_finite", "_ZGVnN2v_lgamma", 2 },
+        { "__lgamma_r_finite", "_ZGVnN4v_lgammaf", 4 },
+        { "__lgammaf_r_finite", "_ZGVnN4v_lgammaf", 4 },
+        { "lgamma_r", "_ZGVnN2v_lgamma", 2 },
+        { "lgamma_r", "_ZGVnN4v_lgammaf", 4 },
+        { "lgammaf_r", "_ZGVnN4v_lgammaf", 4 },
+        { "llvm.lgamma.f64", "_ZGVnN2v_lgamma", 2 },
+        { "llvm.lgamma.f32", "_ZGVnN4v_lgammaf", 4 },
+        { "llvm.lgamma.v2f64", "_ZGVnN2v_lgamma", 2 },
+        { "llvm.lgamma.v4f32", "_ZGVnN4v_lgammaf", 4 },
+
+        { "log", "_ZGVnN2v_log_u35", 2 },
+        { "log", "_ZGVnN4v_logf_u35", 4 },
+        { "logf", "_ZGVnN4v_logf_u35", 4 },
+        { "llvm.log.f64", "_ZGVnN2v_log_u35", 2 },
+        { "llvm.log.f32", "_ZGVnN4v_logf_u35", 4 },
+        { "llvm.log.v2f64", "_ZGVnN2v_log_u35", 2 },
+        { "llvm.log.v4f32", "_ZGVnN4v_logf_u35", 4 },
+
+        { "log2", "_ZGVnN2v_log2_u35", 2 },
+        { "log2", "_ZGVnN4v_log2f_u35", 4 },
+        { "log2f", "_ZGVnN4v_log2f_u35", 4 },
+        { "llvm.log2.f64", "_ZGVnN2v_log2_u35", 2 },
+        { "llvm.log2.f32", "_ZGVnN4v_log2f_u35", 4 },
+        { "llvm.log2.v2f64", "_ZGVnN2v_log2_u35", 2 },
+        { "llvm.log2.v4f32", "_ZGVnN4v_log2f_u35", 4 },
+
+        // log10_u35 is not in SLEEF 3.4.0 yet.
+        // { "log10", "_ZGVnN2v_log10_u35", 2 },
+        // { "log10", "_ZGVnN4v_log10f_u35", 4 },
+        // { "log10f", "_ZGVnN4v_log10f_u35", 4 },
+        // { "llvm.log10.f64", "_ZGVnN2v_log10_u35", 2 },
+        // { "llvm.log10.f32", "_ZGVnN4v_log10f_u35", 4 },
+        // { "llvm.log10.v2f64", "_ZGVnN2v_log10_u35", 2 },
+        // { "llvm.log10.v4f32", "_ZGVnN4v_log10f_u35", 4 },
+
+        { "log10", "_ZGVnN2v_log10", 2 },
+        { "log10", "_ZGVnN4v_log10f", 4 },
+        { "log10f", "_ZGVnN4v_log10f", 4 },
+        { "llvm.log10.f64", "_ZGVnN2v_log10", 2 },
+        { "llvm.log10.f32", "_ZGVnN4v_log10f", 4 },
+        { "llvm.log10.v2f64", "_ZGVnN2v_log10", 2 },
+        { "llvm.log10.v4f32", "_ZGVnN4v_log10f", 4 },
+
+        // pow_u35 is not in SLEEF 3.4.0 yet.
+        // { "pow", "_ZGVnN2vv_pow_u35", 2 },
+        // { "pow", "_ZGVnN4vv_powf_u35", 4 },
+        // { "powf", "_ZGVnN4vv_powf_u35", 4 },
+        // { "llvm.pow.f64", "_ZGVnN2vv_pow_u35", 2 },
+        // { "llvm.pow.f32", "_ZGVnN4vv_powf_u35", 4 },
+        // { "llvm.pow.v2f64", "_ZGVnN2vv_pow_u35", 2 },
+        // { "llvm.pow.v4f32", "_ZGVnN4vv_powf_u35", 4 },
+
+        { "pow", "_ZGVnN2vv_pow", 2 },
+        { "pow", "_ZGVnN4vv_powf", 4 },
+        { "powf", "_ZGVnN4vv_powf", 4 },
+        { "llvm.pow.f64", "_ZGVnN2vv_pow", 2 },
+        { "llvm.pow.f32", "_ZGVnN4vv_powf", 4 },
+        { "llvm.pow.v2f64", "_ZGVnN2vv_pow", 2 },
+        { "llvm.pow.v4f32", "_ZGVnN4vv_powf", 4 },
+
+        { "sin", "_ZGVnN2v_sin_u35", 2 },
+        { "sin", "_ZGVnN4v_sinf_u35", 4 },
+        { "sinf", "_ZGVnN4v_sinf_u35", 4 },
+        { "llvm.sin.f64", "_ZGVnN2v_sin_u35", 2 },
+        { "llvm.sin.f32", "_ZGVnN4v_sinf_u35", 4 },
+        { "llvm.sin.v2f64", "_ZGVnN2v_sin_u35", 2 },
+        { "llvm.sin.v4f32", "_ZGVnN4v_sinf_u35", 4 },
+
+        { "sinh", "_ZGVnN2v_sinh_u35", 2 },
+        { "sinh", "_ZGVnN4v_sinhf_u35", 4 },
+        { "sinhf", "_ZGVnN4v_sinhf_u35", 4 },
+        { "llvm.sinh.f64", "_ZGVnN2v_sinh_u35", 2 },
+        { "llvm.sinh.f32", "_ZGVnN4v_sinhf_u35", 4 },
+        { "llvm.sinh.v2f64", "_ZGVnN2v_sinh_u35", 2 },
+        { "llvm.sinh.v4f32", "_ZGVnN4v_sinhf_u35", 4 },
+
+        { "sqrt", "_ZGVnN2v_sqrt_u35", 2 },
+        { "sqrt", "_ZGVnN4v_sqrtf_u35", 4 },
+        { "sqrtf", "_ZGVnN4v_sqrtf_u35", 4 },
+        { "llvm.sqrt.f64", "_ZGVnN2v_sqrt_u35", 2 },
+        { "llvm.sqrt.f32", "_ZGVnN4v_sqrtf_u35", 4 },
+        { "llvm.sqrt.v2f64", "_ZGVnN2v_sqrt_u35", 2 },
+        { "llvm.sqrt.v4f32", "_ZGVnN4v_sqrtf_u35", 4 },
+
+        { "tan", "_ZGVnN2v_tan_u35", 2 },
+        { "tan", "_ZGVnN4v_tanf_u35", 4 },
+        { "tanf", "_ZGVnN4v_tanf_u35", 4 },
+        { "llvm.tan.f64", "_ZGVnN2v_tan_u35", 2 },
+        { "llvm.tan.f32", "_ZGVnN4v_tanf_u35", 4 },
+        { "llvm.tan.v2f64", "_ZGVnN2v_tan_u35", 2 },
+        { "llvm.tan.v4f32", "_ZGVnN4v_tanf_u35", 4 },
+
+        { "tanh", "_ZGVnN2v_tanh_u35", 2 },
+        { "tanh", "_ZGVnN4v_tanhf_u35", 4 },
+        { "tanhf", "_ZGVnN4v_tanhf", 4 },
+        { "llvm.tanh.f64", "_ZGVnN2v_tanh_u35", 2 },
+        { "llvm.tanh.f32", "_ZGVnN4v_tanhf_u35", 4 },
+        { "llvm.tanh.v2f64", "_ZGVnN2v_tanh_u35", 2 },
+        { "llvm.tanh.v4f32", "_ZGVnN4v_tanhf_u35", 4 },
+
+        // tgamma_u35 is not in SLEEF 3.4.0 yet.
+        // { "tgamma", "_ZGVnN2v_tgamma_u35", 2 },
+        // { "tgamma", "_ZGVnN4v_tgammaf_u35", 4 },
+        // { "tgammaf", "_ZGVnN4v_tgammaf_u35", 4 },
+        // { "llvm.tgamma.f64", "_ZGVnN2v_tgamma_u35", 2 },
+        // { "llvm.tgamma.f32", "_ZGVnN4v_tgammaf_u35", 4 },
+        // { "llvm.tgamma.v2f64", "_ZGVnN2v_tgamma_u35", 2 },
+        // { "llvm.tgamma.v4f32", "_ZGVnN4v_tgammaf_u35", 4 },
+
+        { "tgamma", "_ZGVnN2v_tgamma", 2 },
+        { "tgamma", "_ZGVnN4v_tgammaf", 4 },
+        { "tgammaf", "_ZGVnN4v_tgammaf", 4 },
+        { "llvm.tgamma.f64", "_ZGVnN2v_tgamma", 2 },
+        { "llvm.tgamma.f32", "_ZGVnN4v_tgammaf", 4 },
+        { "llvm.tgamma.v2f64", "_ZGVnN2v_tgamma", 2 },
+        { "llvm.tgamma.v4f32", "_ZGVnN4v_tgammaf", 4 },
+      };
+
+      const VecDesc AArch64TwoAndFourLaneVecFuncsFinite[] = {
+        { "acos", "_ZGVnN2v___acos_finite", 2 },
+        { "acos", "_ZGVnN4v___acosf_finite", 4 },
+        { "acosf", "_ZGVnN4v___acosf_finite", 4 },
+        { "__acos_finite", "_ZGVnN2v___acos_finite", 2 },
+        { "__acos_finite", "_ZGVnN4v___acosf_finite", 4 },
+        { "__acosf_finite", "_ZGVnN4v___acosf_finite", 4 },
+        { "llvm.acos.f64", "_ZGVnN2v___acos_finite", 2 },
+        { "llvm.acos.f32", "_ZGVnN4v___acosf_finite", 4 },
+        { "llvm.acos.v2f64", "_ZGVnN2v___acos_finite", 2 },
+        { "llvm.acos.v4f32", "_ZGVnN4v___acosf_finite", 4 },
+
+        { "asin", "_ZGVnN2v___asin_finite", 2 },
+        { "asin", "_ZGVnN4v___asinf_finite", 4 },
+        { "asinf", "_ZGVnN4v___asinf_finite", 4 },
+        { "__asin_finite", "_ZGVnN2v___asin_finite", 2 },
+        { "__asin_finite", "_ZGVnN4v___asinf_finite", 4 },
+        { "__asinf_finite", "_ZGVnN4v___asinf_finite", 4 },
+        { "llvm.asin.f64", "_ZGVnN2v___asin_finite", 2 },
+        { "llvm.asin.f32", "_ZGVnN4v___asinf_finite", 4 },
+        { "llvm.asin.v2f64", "_ZGVnN2v___asin_finite", 2 },
+        { "llvm.asin.v4f32", "_ZGVnN4v___asinf_finite", 4 },
+
+        // Not in SLEEF 3.4.0 yet.
+        // { "atan", "_ZGVnN2v___atan_finite", 2 },
+        // { "atan", "_ZGVnN4v___atanf_finite", 4 },
+        // { "atanf", "_ZGVnN4v___atanf_finite", 4 },
+        // { "llvm.atan.f64", "_ZGVnN2v___atan_finite", 2 },
+        // { "llvm.atan.f32", "_ZGVnN4v___atanf_finite", 4 },
+        // { "llvm.atan.v2f64", "_ZGVnN2v___atan_finite", 2 },
+        // { "llvm.atan.v4f32", "_ZGVnN4v___atanf_finite", 4 },
+
+        { "atan", "_ZGVnN2v_atan", 2 },
+        { "atan", "_ZGVnN4v_atanf", 4 },
+        { "atanf", "_ZGVnN4v_atanf", 4 },
+        { "llvm.atan.f64", "_ZGVnN2v_atan", 2 },
+        { "llvm.atan.f32", "_ZGVnN4v_atanf", 4 },
+        { "llvm.atan.v2f64", "_ZGVnN2v_atan", 2 },
+        { "llvm.atan.v4f32", "_ZGVnN4v_atanf", 4 },
+
+        { "atan2", "_ZGVnN2vv___atan2_finite", 2 },
+        { "atan2", "_ZGVnN4vv___atan2f_finite", 4 },
+        { "atan2f", "_ZGVnN4vv___atan2f_finite", 4 },
+        { "__atan2_finite", "_ZGVnN2vv___atan2_finite", 2 },
+        { "__atan2_finite", "_ZGVnN4vv___atan2f_finite", 4 },
+        { "__atan2f_finite", "_ZGVnN4vv___atan2f_finite", 4 },
+        { "llvm.atan2.f64", "_ZGVnN2vv___atan2_finite", 2 },
+        { "llvm.atan2.f32", "_ZGVnN4vv___atan2f_finite", 4 },
+        { "llvm.atan2.v2f64", "_ZGVnN2vv___atan2_finite", 2 },
+        { "llvm.atan2.v4f32", "_ZGVnN4vv___atan2f_finite", 4 },
+
+        { "atanh", "_ZGVnN2v___atanh_finite", 2 },
+        { "atanh", "_ZGVnN4v___atanhf_finite", 4 },
+        { "atanhf", "_ZGVnN4v___atanhf_finite", 4 },
+        { "__atanh_finite", "_ZGVnN2v___atanh_finite", 2 },
+        { "__atanh_finite", "_ZGVnN4v___atanhf_finite", 4 },
+        { "__atanhf_finite", "_ZGVnN4v___atanhf_finite", 4 },
+        { "llvm.atanh.f64", "_ZGVnN2v___atanh_finite", 2 },
+        { "llvm.atanh.f32", "_ZGVnN4v___atanhf_finite", 4 },
+        { "llvm.atanh.v2f64", "_ZGVnN2v___atanh_finite", 2 },
+        { "llvm.atanh.v4f32", "_ZGVnN4v___atanhf_finite", 4 },
+
+        // Not in SLEEF 3.4.0 yet.
+        // { "cos", "_ZGVnN2v___cos_finite", 2 },
+        // { "cos", "_ZGVnN4v___cosf_finite", 4 },
+        // { "cosf", "_ZGVnN4v___cosf_finite", 4 },
+        // { "llvm.cos.f64", "_ZGVnN2v___cos_finite", 2 },
+        // { "llvm.cos.f32", "_ZGVnN4v___cosf_finite", 4 },
+        // { "llvm.cos.v2f64", "_ZGVnN2v___cos_finite", 2 },
+        // { "llvm.cos.v4f32", "_ZGVnN4v___cosf_finite", 4 },
+
+        { "cos", "_ZGVnN2v_cos", 2 },
+        { "cos", "_ZGVnN4v_cosf", 4 },
+        { "cosf", "_ZGVnN4v_cosf", 4 },
+        { "llvm.cos.f64", "_ZGVnN2v_cos", 2 },
+        { "llvm.cos.f32", "_ZGVnN4v_cosf", 4 },
+        { "llvm.cos.v2f64", "_ZGVnN2v_cos", 2 },
+        { "llvm.cos.v4f32", "_ZGVnN4v_cosf", 4 },
+
+        { "cosh", "_ZGVnN2v___cosh_finite", 2 },
+        { "cosh", "_ZGVnN4v___coshf_finite", 4 },
+        { "coshf", "_ZGVnN4v___coshf_finite", 4 },
+        { "__cosh_finite", "_ZGVnN2v___cosh_finite", 2 },
+        { "__cosh_finite", "_ZGVnN4v___coshf_finite", 4 },
+        { "__coshf_finite", "_ZGVnN4v___coshf_finite", 4 },
+        { "llvm.cosh.f64", "_ZGVnN2v___cosh_finite", 2 },
+        { "llvm.cosh.f32", "_ZGVnN4v___coshf_finite", 4 },
+        { "llvm.cosh.v2f64", "_ZGVnN2v___cosh_finite", 2 },
+        { "llvm.cosh.v4f32", "_ZGVnN4v___coshf_finite", 4 },
+
+        { "exp", "_ZGVnN2v___exp_finite", 2 },
+        { "exp", "_ZGVnN4v___expf_finite", 4 },
+        { "expf", "_ZGVnN4v___expf_finite", 4 },
+        { "__exp_finite", "_ZGVnN2v___exp_finite", 2 },
+        { "__exp_finite", "_ZGVnN4v___expf_finite", 4 },
+        { "__expf_finite", "_ZGVnN4v___expf_finite", 4 },
+        { "llvm.exp.f64", "_ZGVnN2v___exp_finite", 2 },
+        { "llvm.exp.f32", "_ZGVnN4v___expf_finite", 4 },
+        { "llvm.exp.v2f64", "_ZGVnN2v___exp_finite", 2 },
+        { "llvm.exp.v4f32", "_ZGVnN4v___expf_finite", 4 },
+
+        { "exp2", "_ZGVnN2v___exp2_finite", 2 },
+        { "exp2", "_ZGVnN4v___exp2f_finite", 4 },
+        { "exp2f", "_ZGVnN4v___exp2f_finite", 4 },
+        { "__exp2_finite", "_ZGVnN2v___exp2_finite", 2 },
+        { "__exp2_finite", "_ZGVnN4v___exp2f_finite", 4 },
+        { "__exp2f_finite", "_ZGVnN4v___exp2f_finite", 4 },
+        { "llvm.exp2.f64", "_ZGVnN2v___exp2_finite", 2 },
+        { "llvm.exp2.f32", "_ZGVnN4v___exp2f_finite", 4 },
+        { "llvm.exp2.v2f64", "_ZGVnN2v___exp2_finite", 2 },
+        { "llvm.exp2.v4f32", "_ZGVnN4v___exp2f_finite", 4 },
+
+        { "exp10", "_ZGVnN2v___exp10_finite", 2 },
+        { "exp10", "_ZGVnN4v___exp10f_finite", 4 },
+        { "exp10f", "_ZGVnN4v___exp10f_finite", 4 },
+        { "__exp10_finite", "_ZGVnN2v___exp10_finite", 2 },
+        { "__exp10_finite", "_ZGVnN4v___exp10f_finite", 4 },
+        { "__exp10f_finite", "_ZGVnN4v___exp10f_finite", 4 },
+        { "llvm.exp10.f64", "_ZGVnN2v___exp10_finite", 2 },
+        { "llvm.exp10.f32", "_ZGVnN4v___exp10f_finite", 4 },
+        { "llvm.exp10.v2f64", "_ZGVnN2v___exp10_finite", 2 },
+        { "llvm.exp10.v4f32", "_ZGVnN4v___exp10f_finite", 4 },
+
+        { "lgamma", "_ZGVnN2v___lgamma_finite", 2 },
+        { "lgamma", "_ZGVnN4v___lgammaf_finite", 4 },
+        { "lgammaf", "_ZGVnN4v___lgammaf_finite", 4 },
+        { "__lgamma_r_finite", "_ZGVnN2v___lgamma_finite", 2 },
+        { "__lgamma_r_finite", "_ZGVnN4v___lgammaf_finite", 4 },
+        { "__lgammaf_r_finite", "_ZGVnN4v___lgammaf_finite", 4 },
+        { "lgamma_r_finite", "_ZGVnN2v___lgamma_finite", 2 },
+        { "lgamma_r_finite", "_ZGVnN4v___lgammaf_finite", 4 },
+        { "lgammaf_r_finite", "_ZGVnN4v___lgammaf_finite", 4 },
+        { "lgamma_r", "_ZGVnN2v___lgamma_finite", 2 },
+        { "lgamma_r", "_ZGVnN4v___lgammaf_finite", 4 },
+        { "lgammaf_r", "_ZGVnN4v___lgammaf_finite", 4 },
+        { "llvm.lgamma.f64", "_ZGVnN2v___lgamma_finite", 2 },
+        { "llvm.lgamma.f32", "_ZGVnN4v___lgammaf_finite", 4 },
+        { "llvm.lgamma.v2f64", "_ZGVnN2v___lgamma_finite", 2 },
+        { "llvm.lgamma.v4f32", "_ZGVnN4v___lgammaf_finite", 4 },
+
+        { "log", "_ZGVnN2v___log_finite", 2 },
+        { "log", "_ZGVnN4v___logf_finite", 4 },
+        { "logf", "_ZGVnN4v___logf_finite", 4 },
+        { "__log_finite", "_ZGVnN2v___log_finite", 2 },
+        { "__log_finite", "_ZGVnN4v___logf_finite", 4 },
+        { "__logf_finite", "_ZGVnN4v___logf_finite", 4 },
+        { "llvm.log.f64", "_ZGVnN2v___log_finite", 2 },
+        { "llvm.log.f32", "_ZGVnN4v___logf_finite", 4 },
+        { "llvm.log.v2f64", "_ZGVnN2v___log_finite", 2 },
+        { "llvm.log.v4f32", "_ZGVnN4v___logf_finite", 4 },
+
+        // Not in SLEEF 3.4.0 yet.
+        // { "log2", "_ZGVnN2v___log2_finite", 2 },
+        // { "log2", "_ZGVnN4v___log2f_finite", 4 },
+        // { "log2f", "_ZGVnN4v___log2f_finite", 4 },
+        // { "llvm.log2.f64", "_ZGVnN2v___log2_finite", 2 },
+        // { "llvm.log2.f32", "_ZGVnN4v___log2f_finite", 4 },
+        // { "llvm.log2.v2f64", "_ZGVnN2v___log2_finite", 2 },
+        // { "llvm.log2.v4f32", "_ZGVnN4v___log2f_finite", 4 },
+
+        { "log2", "_ZGVnN2v_log2", 2 },
+        { "log2", "_ZGVnN4v_log2f", 4 },
+        { "log2f", "_ZGVnN4v_log2f", 4 },
+        { "llvm.log2.f64", "_ZGVnN2v_log2", 2 },
+        { "llvm.log2.f32", "_ZGVnN4v_log2f", 4 },
+        { "llvm.log2.v2f64", "_ZGVnN2v_log2", 2 },
+        { "llvm.log2.v4f32", "_ZGVnN4v_log2f", 4 },
+
+        { "log10", "_ZGVnN2v___log10_finite", 2 },
+        { "log10", "_ZGVnN4v___log10f_finite", 4 },
+        { "log10f", "_ZGVnN4v___log10f_finite", 4 },
+        { "__log10_finite", "_ZGVnN2v___log10_finite", 2 },
+        { "__log10_finite", "_ZGVnN4v___log10f_finite", 4 },
+        { "__log10f_finite", "_ZGVnN4v___log10f_finite", 4 },
+        { "llvm.log10.f64", "_ZGVnN2v___log10_finite", 2 },
+        { "llvm.log10.f32", "_ZGVnN4v___log10f_finite", 4 },
+        { "llvm.log10.v2f64", "_ZGVnN2v___log10_finite", 2 },
+        { "llvm.log10.v4f32", "_ZGVnN4v___log10f_finite", 4 },
+
+        { "pow", "_ZGVnN2vv___pow_finite", 2 },
+        { "pow", "_ZGVnN4vv___powf_finite", 4 },
+        { "powf", "_ZGVnN4vv___powf_finite", 4 },
+        { "__pow_finite", "_ZGVnN2vv___pow_finite", 2 },
+        { "__pow_finite", "_ZGVnN4vv___powf_finite", 4 },
+        { "__powf_finite", "_ZGVnN4vv___powf_finite", 4 },
+        { "llvm.pow.f64", "_ZGVnN2vv___pow_finite", 2 },
+        { "llvm.pow.f32", "_ZGVnN4vv___powf_finite", 4 },
+        { "llvm.pow.v2f64", "_ZGVnN2vv___pow_finite", 2 },
+        { "llvm.pow.v4f32", "_ZGVnN4vv___powf_finite", 4 },
+
+        // Not in SLEEF 3.4.0 yet.
+        // { "sin", "_ZGVnN2v___sin_finite", 2 },
+        // { "sin", "_ZGVnN4v___sinf_finite", 4 },
+        // { "sinf", "_ZGVnN4v___sinf_finite", 4 },
+        // { "llvm.sin.f64", "_ZGVnN2v___sin_finite", 2 },
+        // { "llvm.sin.f32", "_ZGVnN4v___sinf_finite", 4 },
+        // { "llvm.sin.v2f64", "_ZGVnN2v___sin_finite", 2 },
+        // { "llvm.sin.v4f32", "_ZGVnN4v___sinf_finite", 4 },
+
+        { "sin", "_ZGVnN2v_sin", 2 },
+        { "sin", "_ZGVnN4v_sinf", 4 },
+        { "sinf", "_ZGVnN4v_sinf", 4 },
+        { "llvm.sin.f64", "_ZGVnN2v_sin", 2 },
+        { "llvm.sin.f32", "_ZGVnN4v_sinf", 4 },
+        { "llvm.sin.v2f64", "_ZGVnN2v_sin", 2 },
+        { "llvm.sin.v4f32", "_ZGVnN4v_sinf", 4 },
+
+        { "sinh", "_ZGVnN2v___sinh_finite", 2 },
+        { "sinh", "_ZGVnN4v___sinhf_finite", 4 },
+        { "sinhf", "_ZGVnN4v___sinhf_finite", 4 },
+        { "__sinh_finite", "_ZGVnN2v___sinh_finite", 2 },
+        { "__sinh_finite", "_ZGVnN4v___sinhf_finite", 4 },
+        { "__sinhf_finite", "_ZGVnN4v___sinhf_finite", 4 },
+        { "llvm.sinh.f64", "_ZGVnN2v___sinh_finite", 2 },
+        { "llvm.sinh.f32", "_ZGVnN4v___sinhf_finite", 4 },
+        { "llvm.sinh.v2f64", "_ZGVnN2v___sinh_finite", 2 },
+        { "llvm.sinh.v4f32", "_ZGVnN4v___sinhf_finite", 4 },
+
+        { "sqrt", "_ZGVnN2v___sqrt_finite", 2 },
+        { "sqrt", "_ZGVnN4v___sqrtf_finite", 4 },
+        { "sqrtf", "_ZGVnN4v___sqrtf_finite", 4 },
+        { "__sqrt_finite", "_ZGVnN2v___sqrt_finite", 2 },
+        { "__sqrt_finite", "_ZGVnN4v___sqrtf_finite", 4 },
+        { "__sqrtf_finite", "_ZGVnN4v___sqrtf_finite", 4 },
+        { "llvm.sqrt.f64", "_ZGVnN2v___sqrt_finite", 2 },
+        { "llvm.sqrt.f32", "_ZGVnN4v___sqrtf_finite", 4 },
+        { "llvm.sqrt.v2f64", "_ZGVnN2v___sqrt_finite", 2 },
+        { "llvm.sqrt.v4f32", "_ZGVnN4v___sqrtf_finite", 4 },
+
+        // Not in SLEEF 3.4.0 yet.
+        // { "tan", "_ZGVnN2v___tan_finite", 2 },
+        // { "tan", "_ZGVnN4v___tanf_finite", 4 },
+        // { "tanf", "_ZGVnN4v___tanf_finite", 4 },
+        // { "llvm.tan.f64", "_ZGVnN2v___tan_finite", 2 },
+        // { "llvm.tan.f32", "_ZGVnN4v___tanf_finite", 4 },
+        // { "llvm.tan.v2f64", "_ZGVnN2v___tan_finite", 2 },
+        // { "llvm.tan.v4f32", "_ZGVnN4v___tanf_finite", 4 },
+
+        // Not in SLEEF 3.4.0 yet.
+        // { "tanh", "_ZGVnN2v___tanh_finite", 2 },
+        // { "tanh", "_ZGVnN4v___tanhf_finite", 4 },
+        // { "tanhf", "_ZGVnN4v___tanhf_finite", 4 },
+        // { "llvm.tanh.f64", "_ZGVnN2v___tanh_finite", 2 },
+        // { "llvm.tanh.f32", "_ZGVnN4v___tanhf_finite", 4 },
+        // { "llvm.tanh.v2f64", "_ZGVnN2v___tanh_finite", 2 },
+        // { "llvm.tanh.v4f32", "_ZGVnN4v___tanhf_finite", 4 },
+
+        { "tgamma", "_ZGVnN2v___tgamma_finite", 2 },
+        { "tgamma", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "tgammaf", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "__tgamma_finite", "_ZGVnN2v___tgamma_finite", 2 },
+        { "__tgamma_finite", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "__tgammaf_finite", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "__gamma_r_finite", "_ZGVnN2v___tgamma_finite", 2 },
+        { "__gamma_r_finite", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "__gammaf_r_finite", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "__gamma_r", "_ZGVnN2v___tgamma_finite", 2 },
+        { "__gamma_r", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "__gammaf_r", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "gamma_r_finite", "_ZGVnN2v___tgamma_finite", 2 },
+        { "gamma_r_finite", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "gammaf_r_finite", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "gamma_r", "_ZGVnN2v___tgamma_finite", 2 },
+        { "gamma_r", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "gammaf_r", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "tgamma_r_finite", "_ZGVnN2v___tgamma_finite", 2 },
+        { "tgamma_r_finite", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "tgammaf_r_finite", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "tgamma_r", "_ZGVnN2v___tgamma_finite", 2 },
+        { "tgamma_r", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "tgammaf_r", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "llvm.tgamma.f64", "_ZGVnN2v___tgamma_finite", 2 },
+        { "llvm.tgamma.f32", "_ZGVnN4v___tgammaf_finite", 4 },
+        { "llvm.tgamma.v2f64", "_ZGVnN2v___tgamma_finite", 2 },
+        { "llvm.tgamma.v4f32", "_ZGVnN4v___tgammaf_finite", 4 },
+      };
+
+      unsigned VF = getMaxVectorWidthForTarget();
+
+      if (VF >= 128U) {
+        if (FastMath && FiniteMathOnly)
+          addVectorizableFunctions(AArch64TwoAndFourLaneVecFuncsFastMath);
+        else if (FastMath && !FiniteMathOnly)
+          addVectorizableFunctions(AArch64TwoAndFourLaneVecFuncsFastMath);
+        else if (FiniteMathOnly && !FastMath)
+          addVectorizableFunctions(AArch64TwoAndFourLaneVecFuncsFinite);
+        else
+          addVectorizableFunctions(AArch64TwoAndFourLaneVecFuncs);
+      }
     }
     break;
   }

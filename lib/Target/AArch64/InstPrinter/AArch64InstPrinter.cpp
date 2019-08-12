@@ -12,6 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "AArch64InstPrinter.h"
+#include "AArch64BranchTargetAligner.h"
 #include "MCTargetDesc/AArch64AddressingModes.h"
 #include "Utils/AArch64BaseInfo.h"
 #include "llvm/ADT/STLExtras.h"
@@ -29,6 +30,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include <cassert>
 #include <cstdint>
+#include <cmath>
 #include <string>
 
 using namespace llvm;
@@ -293,6 +295,15 @@ void AArch64InstPrinter::printInst(const MCInst *MI, raw_ostream &O,
     printInstruction(MI, STI, O);
 
   printAnnotation(O, Annot);
+
+  AArch64BranchTargetAligner BTA;
+  if (BTA.needsSpecialAlignment(STI.getCPU(), Opcode)) {
+    unsigned BA = BTA.getBranchTargetAlignment(*MI);
+    if (BA) {
+      O << "\n\t" << ".p2align" << '\t' << (unsigned) std::log2(BA);
+      printAnnotation(O, "T99 branch target alignment");
+    }
+  }
 }
 
 static bool isTblTbxInstruction(unsigned Opcode, StringRef &Layout,

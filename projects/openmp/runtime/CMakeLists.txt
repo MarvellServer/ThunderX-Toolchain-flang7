@@ -233,6 +233,20 @@ libomp_get_legal_arch(LIBOMP_LEGAL_ARCH)
 # Compiler flag checks, library checks, threading check, etc.
 include(config-ix)
 
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU" AND ${CMAKE_SYSTEM_PROCESSOR} MATCHES "aarch64" AND "${libomp_build_type_lowercase}" STREQUAL "release")
+  message(STATUS "Adjusting OpenMP optimization level for ${libomp_build_type_lowercase} build.")
+  string(REPLACE "-O2" "-O3 -finline-functions -funroll-loops" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+  string(REPLACE "-O2" "-O3 -finline-functions -funroll-loops" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  string(REPLACE "-fno-tree-vectorize" "-ftree-vectorize" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+  string(REPLACE "-fno-tree-vectorize" "-ftree-vectorize" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  string(REPLACE "-fno-tree-slp-vectorize" "-ftree-slp-vectorize" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+  string(REPLACE "-fno-tree-slp-vectorize" "-ftree-slp-vectorize" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  string(REPLACE "-fno-reorder-blocks" "-freorder-blocks" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+  string(REPLACE "-fno-reorder-blocks" "-freorder-blocks" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+  string(REPLACE "-fno-toplevel-reorder" "-ftoplevel-reorder" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+  string(REPLACE "-fno-toplevel-reorder" "-ftoplevel-reorder -felide-constructors" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+endif()
+
 # Is there a quad precision data type available?
 # TODO: Make this a real feature check
 set(LIBOMP_USE_QUAD_PRECISION "${LIBOMP_HAVE_QUAD_PRECISION}" CACHE BOOL

@@ -89,6 +89,11 @@
 #include <utility>
 #include <vector>
 
+#ifndef NDEBUG
+#include <iostream>
+#include <string>
+#endif
+
 using namespace clang;
 using namespace driver;
 using namespace options;
@@ -486,6 +491,36 @@ static void setPGOInstrumentor(CodeGenOptions &Opts, ArgList &Args,
   Opts.setProfileInstr(Instrumentor);
 }
 
+#ifndef NDEBUG
+static void printTargetOptions(const TargetOptions &TO) {
+  std::cerr << __PRETTY_FUNCTION__ << ":" << std::endl;
+  std::cerr << "---> Triple: " << TO.Triple.c_str() << std::endl;
+  std::cerr << "---> HostTriple: " << TO.HostTriple.c_str() << std::endl;
+  std::cerr << "---> CPU: " << TO.CPU.c_str() << std::endl;
+  std::cerr << "---> Arch: " << TO.Arch.c_str() << std::endl;
+  std::cerr << "---> Tune: " << TO.Tune.c_str() << std::endl;
+  std::cerr << "---> FastMath: "
+    << std::boolalpha << TO.FastMath << std::endl;
+  std::cerr << "---> FiniteMathOnly: "
+    << std::boolalpha << TO.FiniteMathOnly << std::endl;
+  std::cerr << "---> FeaturesAsWritten: " << std::endl;
+
+  std::vector<std::string>::const_iterator B =
+    TO.FeaturesAsWritten.begin();
+  std::vector<std::string>::const_iterator E =
+    TO.FeaturesAsWritten.end();
+  for (std::vector<std::string>::const_iterator I = B; I != E; ++I)
+    std::cerr << "   ---> " << (*I).c_str() << std::endl;
+
+  std::cerr << "---> Features: " << std::endl;
+
+  B = TO.Features.begin();
+  E = TO.Features.end();
+  for (std::vector<std::string>::const_iterator I = B; I != E; ++I)
+    std::cerr << "   ---> " << (*I).c_str() << std::endl;
+}
+#endif
+
 // Set the profile kind using fprofile-instrument-use-path.
 static void setPGOUseInstrumentor(CodeGenOptions &Opts,
                                   const Twine &ProfileName) {
@@ -510,6 +545,10 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
                              const FrontendOptions &FrontendOpts) {
   bool Success = true;
   llvm::Triple Triple = llvm::Triple(TargetOpts.Triple);
+
+#ifndef NDEBUG
+  printTargetOptions(TargetOpts);
+#endif
 
   unsigned OptimizationLevel = getOptimizationLevel(Args, IK, Diags);
   // TODO: This could be done in Driver
@@ -554,12 +593,23 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
 
   if (Arg *A = Args.getLastArg(OPT_fveclib)) {
     StringRef Name = A->getValue();
+    std::string TS = Triple.str();
     if (Name == "Accelerate")
       Opts.setVecLib(CodeGenOptions::Accelerate);
-    else if (Name == "SVML")
-      Opts.setVecLib(CodeGenOptions::SVML);
-    else if (Name == "SLEEF")
-      Opts.setVecLib(CodeGenOptions::SLEEF);
+    else if (Name == "SVML") {
+      if (Triple.getArch() == llvm::Triple::x86_64)
+        Opts.setVecLib(CodeGenOptions::SVML);
+      else
+        Diags.Report(diag::err_drv_unsupported_opt_for_target)
+          << Name << TS.c_str();
+    } else if (Name == "SLEEF") {
+      if (Triple.getArch() == llvm::Triple::aarch64 ||
+          Triple.getArch() == llvm::Triple::aarch64_be)
+        Opts.setVecLib(CodeGenOptions::SLEEF);
+      else
+        Diags.Report(diag::err_drv_unsupported_opt_for_target)
+          << Name << TS.c_str();
+    }
 #ifdef FLANG_LLVM_EXTENSIONS
     else if (Name == "PGMATH")
       Opts.setVecLib(CodeGenOptions::PGMATH);
@@ -2964,7 +3014,18 @@ static void ParseTargetArgs(TargetOptions &Opts, ArgList &Args,
     else
       Opts.EABIVersion = EABIVersion;
   }
+
   Opts.CPU = Args.getLastArgValue(OPT_target_cpu);
+
+  if (Args.hasArg(OPT_target_arch))
+    Opts.Arch = Args.getLastArgValue(OPT_target_arch);
+  if (Args.hasArg(OPT_target_tune))
+    Opts.Tune = Args.getLastArgValue(OPT_target_tune);
+  if (Args.hasArg(OPT_target_finite_math))
+    Opts.FiniteMathOnly = true;
+  if (Args.hasArg(OPT_target_fast_math))
+    Opts.FastMath = true;
+
   Opts.FPMath = Args.getLastArgValue(OPT_mfpmath);
   Opts.FeaturesAsWritten = Args.getAllArgValues(OPT_target_feature);
   Opts.LinkerVersion = Args.getLastArgValue(OPT_target_linker_version);
@@ -2977,6 +3038,10 @@ static void ParseTargetArgs(TargetOptions &Opts, ArgList &Args,
   Opts.ForceEnableInt128 = Args.hasArg(OPT_fforce_enable_int128);
   Opts.NVPTXUseShortPointers = Args.hasFlag(
       options::OPT_fcuda_short_ptr, options::OPT_fno_cuda_short_ptr, false);
+
+#ifndef NDEBUG
+  printTargetOptions(Opts);
+#endif
 }
 
 bool CompilerInvocation::CreateFromArgs(CompilerInvocation &Res,

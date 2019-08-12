@@ -22,7 +22,7 @@ public:
   AArch64BranchTargetAligner() = default;
   ~AArch64BranchTargetAligner() = default;
   bool needsSpecialAlignment(StringRef CPU, unsigned Opcode);
-  unsigned getLoopIndexForNoOps(const MCInst &Inst);
+  unsigned getBranchTargetAlignment(const MCInst &Inst);
   MCInst createNopInstruction();
 };
 }

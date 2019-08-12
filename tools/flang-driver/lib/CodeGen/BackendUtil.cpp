@@ -314,8 +314,10 @@ static void addEfficiencySanitizerPass(const PassManagerBuilder &Builder,
 }
 
 static TargetLibraryInfoImpl *createTLII(llvm::Triple &TargetTriple,
-                                         const CodeGenOptions &CodeGenOpts) {
+                                         const CodeGenOptions &CodeGenOpts,
+                                         const clang::TargetOptions &TOpts) {
   TargetLibraryInfoImpl *TLII = new TargetLibraryInfoImpl(TargetTriple);
+
   if (!CodeGenOpts.SimplifyLibCalls)
     TLII->disableAllFunctions();
   else {
@@ -331,9 +333,21 @@ static TargetLibraryInfoImpl *createTLII(llvm::Triple &TargetTriple,
     TLII->addVectorizableFunctionsFromVecLib(TargetLibraryInfoImpl::Accelerate);
     break;
   case CodeGenOptions::SVML:
+    TLII->setCPU(TOpts.CPU);
+    TLII->setArch(TOpts.Arch);
+    TLII->setTune(TOpts.Tune);
+    TLII->setFastMath(TOpts.FastMath);
+    TLII->setFiniteMathOnly(TOpts.FiniteMathOnly);
+    TLII->setHasExternalVectorLibMath(true);
     TLII->addVectorizableFunctionsFromVecLib(TargetLibraryInfoImpl::SVML);
     break;
   case CodeGenOptions::SLEEF:
+    TLII->setCPU(TOpts.CPU);
+    TLII->setArch(TOpts.Arch);
+    TLII->setTune(TOpts.Tune);
+    TLII->setFastMath(TOpts.FastMath);
+    TLII->setFiniteMathOnly(TOpts.FiniteMathOnly);
+    TLII->setHasExternalVectorLibMath(true);
     TLII->addVectorizableFunctionsFromVecLib(TargetLibraryInfoImpl::SLEEF);
     break;
 #ifdef FLANG_LLVM_EXTENSIONS
@@ -516,7 +530,7 @@ void EmitAssemblyHelper::CreatePasses(legacy::PassManager &MPM,
   // TLI with an unknown target otherwise.
   Triple TargetTriple(TheModule->getTargetTriple());
   std::unique_ptr<TargetLibraryInfoImpl> TLII(
-      createTLII(TargetTriple, CodeGenOpts));
+      createTLII(TargetTriple, CodeGenOpts, TargetOpts));
 
   PassManagerBuilderWrapper PMBuilder(TargetTriple, CodeGenOpts, LangOpts);
 
@@ -726,7 +740,7 @@ bool EmitAssemblyHelper::AddEmitPasses(legacy::PassManager &CodeGenPasses,
   // Add LibraryInfo.
   llvm::Triple TargetTriple(TheModule->getTargetTriple());
   std::unique_ptr<TargetLibraryInfoImpl> TLII(
-      createTLII(TargetTriple, CodeGenOpts));
+      createTLII(TargetTriple, CodeGenOpts, TargetOpts));
   CodeGenPasses.add(new TargetLibraryInfoWrapperPass(*TLII));
 
   // Normal mode, emit a .s or .o file by running the code generator. Note,
@@ -940,7 +954,7 @@ void EmitAssemblyHelper::EmitAssemblyWithNewPassManager(
   // preset TLI.
   Triple TargetTriple(TheModule->getTargetTriple());
   std::unique_ptr<TargetLibraryInfoImpl> TLII(
-      createTLII(TargetTriple, CodeGenOpts));
+      createTLII(TargetTriple, CodeGenOpts, TargetOpts));
   FAM.registerPass([&] { return TargetLibraryAnalysis(*TLII); });
   MAM.registerPass([&] { return TargetLibraryAnalysis(*TLII); });
 

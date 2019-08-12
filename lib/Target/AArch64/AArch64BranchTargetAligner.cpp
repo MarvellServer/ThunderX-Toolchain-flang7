@@ -13,6 +13,7 @@
 #include "AArch64RegisterInfo.h"
 #include "AArch64Subtarget.h"
 #include "AArch64BranchTargetAligner.h"
+#include "MCTargetDesc/AArch64MCExpr.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/ISDOpcodes.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -28,13 +29,41 @@
 #include "AArch64GenInstrInfo.inc"
 using namespace llvm;
 
+static cl::opt<bool> EnableBranchTargetAlignment(
+  "aarch64-enable-branch-target-alignment", cl::Hidden, cl::init(false),
+  cl::desc("Enable special alignment of branch targets."));
+
 static cl::opt<unsigned> BranchTargetAlignment(
-    "aarch64-branch-target-alignment", cl::Hidden, cl::init(15),
-    cl::desc("Align branch targets on this boundary"));
+  "aarch64-branch-target-alignment", cl::Hidden, cl::init(16),
+  cl::desc("Align branch targets on this boundary (in bytes)."));
+
+static cl::opt<bool> BranchTargetAlignBcc(
+  "aarch64-branch-target-align-bcc", cl::Hidden, cl::init(true),
+  cl::desc("Align branch targets for Bcc."));
+
+static cl::opt<bool> BranchTargetAlignBL(
+  "aarch64-branch-target-align-bl", cl::Hidden, cl::init(false),
+  cl::desc("Align branch targets for BL."));
+
+static cl::opt<bool> BranchTargetAlignBLR(
+  "aarch64-branch-target-align-blr", cl::Hidden, cl::init(true),
+  cl::desc("Align branch targets for BLR."));
+
+static cl::opt<bool> BranchTargetAlignBCond(
+  "aarch64-branch-target-align-bcond", cl::Hidden, cl::init(true),
+  cl::desc("Align branch targets for branch-on-condition (b.eq|b.ne|etc)."));
+
+static cl::opt<bool> BranchTargetAlignCBZ(
+  "aarch64-branch-target-align-cbz", cl::Hidden, cl::init(true),
+  cl::desc("Align branch targets for cbz|cbnz."));
+
+/// Be careful with TBZ|TBNZ. Chances are it will not work.
+static cl::opt<bool> BranchTargetAlignTBZ(
+  "aarch64-branch-target-align-tbz", cl::Hidden, cl::init(false),
+  cl::desc("Align branch targets for tbz|tbnz."));
 
 namespace llvm {
 
-#ifndef NDEBUG
 static const char* getOpcodeName(unsigned Opcode) {
   const char *Name = "<unknown>";
 
@@ -132,7 +161,6 @@ static const char* getOpcodeName(unsigned Opcode) {
 
   return Name;
 }
-#endif
 
 bool AArch64BranchTargetAligner::needsSpecialAlignment(StringRef CPU,
                                                        unsigned Opcode) {
@@ -204,17 +232,273 @@ static bool isFixup(unsigned Opcode) {
   }
 }
 
-unsigned AArch64BranchTargetAligner::getLoopIndexForNoOps(const MCInst &Inst) {
+static bool isBranch(const MCInst &Inst) {
+  unsigned Opcode = Inst.getOpcode();
+
+  switch (Opcode) {
+  default:
+    return false;
+    break;
+  case AArch64::B:
+  case AArch64::Bcc:
+  case AArch64::BR:
+  case AArch64::BRAA:
+  case AArch64::BRAAZ:
+  case AArch64::BRAB:
+  case AArch64::BRABZ:
+  case AArch64::BL:
+  case AArch64::BLR:
+  case AArch64::BLRAA:
+  case AArch64::BLRAAZ:
+  case AArch64::BLRAB:
+  case AArch64::BLRABZ:
+  case AArch64::CBZW:
+  case AArch64::CBZX:
+  case AArch64::CBNZW:
+  case AArch64::CBNZX:
+  case AArch64::CCMPWr:
+  case AArch64::CCMPXr:
+  case AArch64::G_FCMP:
+  case AArch64::G_ICMP:
+  case AArch64::TBZW:
+  case AArch64::TBZX:
+  case AArch64::TBNZW:
+  case AArch64::TBNZX:
+  case AArch64::RET:
+  case AArch64::RETAA:
+  case AArch64::RETAB:
+  case AArch64::SVC:
+    return true;
+    break;
+  }
+
+  return false;
+}
+
+static bool getBranchLabel(const MCInst &Inst) {
+  if (!isBranch(Inst))
+    return false;
+
+  unsigned Opcode = Inst.getOpcode();
+
+  if (isFixup(Opcode))
+    return false;
+
+  if (Opcode == AArch64::RET || Opcode == AArch64::RETAA ||
+      Opcode == AArch64::RETAB)
+    return true;
+
+  if (!EnableBranchTargetAlignment.getValue())
+    return false;
+
+  if (Inst.getNumOperands() < 1)
+    return false;
+
+  if (Inst.getNumOperands() == 1) {
+    const MCOperand &FirstOperand = Inst.getOperand(0);
+    if (!FirstOperand.isExpr())
+      return false;
+
+    const MCSymbolRefExpr *RefExpr =
+      static_cast<const MCSymbolRefExpr*>(FirstOperand.getExpr());
+
+    if (RefExpr == nullptr)
+      return false;
+
+    uint32_t VK = static_cast<uint32_t>(RefExpr->getKind());
+
+    if (VK > MCSymbolRefExpr::VK_DTPREL) {
+      if (const AArch64MCExpr *AARefExpr =
+          dyn_cast<const AArch64MCExpr>(RefExpr)) {
+        VK = AARefExpr->getKind();
+      } else
+        return false;
+    }
+
+    if (VK == MCSymbolRefExpr::VK_Invalid || VK == MCSymbolRefExpr::VK_None ||
+        VK >= AArch64MCExpr::VK_INVALID || VK == AArch64MCExpr::VK_NONE) {
+      switch (Opcode) {
+      case AArch64::B:
+        return BranchTargetAlignBCond.getValue();
+        break;
+      case AArch64::BL:
+        return BranchTargetAlignBL.getValue();
+        break;
+      case AArch64::BLR:
+        return BranchTargetAlignBLR.getValue();
+        break;
+      case AArch64::CBZW:
+      case AArch64::CBZX:
+      case AArch64::CBNZW:
+      case AArch64::CBNZX:
+        return BranchTargetAlignCBZ.getValue();
+        break;
+      case AArch64::TBZW:
+      case AArch64::TBZX:
+      case AArch64::TBNZW:
+      case AArch64::TBNZX:
+        return BranchTargetAlignTBZ.getValue();
+        break;
+      case AArch64::Bcc:
+        return BranchTargetAlignBcc.getValue();
+        break;
+      default:
+        return false;
+        break;
+      }
+    }
+
+    return true;
+  } else if (Inst.getNumOperands() == 2) {
+    const MCOperand &FirstOperand = Inst.getOperand(0);
+    const MCOperand &SecondOperand = Inst.getOperand(1);
+
+    if (!FirstOperand.isExpr() && !SecondOperand.isExpr())
+      return false;
+
+    const MCSymbolRefExpr *RefExpr = nullptr;
+    if (FirstOperand.isExpr())
+      RefExpr = static_cast<const MCSymbolRefExpr*>(FirstOperand.getExpr());
+    else if (SecondOperand.isExpr())
+      RefExpr = static_cast<const MCSymbolRefExpr*>(SecondOperand.getExpr());
+
+    if (RefExpr == nullptr)
+      return false;
+
+    uint32_t VK = static_cast<uint32_t>(RefExpr->getKind());
+
+    if (VK > MCSymbolRefExpr::VK_DTPREL) {
+      if (const AArch64MCExpr *AARefExpr =
+          dyn_cast<const AArch64MCExpr>(RefExpr)) {
+        VK = AARefExpr->getKind();
+      } else
+        return false;
+    }
+
+    if (VK == MCSymbolRefExpr::VK_Invalid || VK == MCSymbolRefExpr::VK_None ||
+        VK >= AArch64MCExpr::VK_INVALID || VK == AArch64MCExpr::VK_NONE) {
+      switch (Opcode) {
+      case AArch64::B:
+        return BranchTargetAlignBCond.getValue();
+        break;
+      case AArch64::BL:
+        return BranchTargetAlignBL.getValue();
+        break;
+      case AArch64::BLR:
+        return BranchTargetAlignBLR.getValue();
+        break;
+      case AArch64::CBZW:
+      case AArch64::CBZX:
+      case AArch64::CBNZW:
+      case AArch64::CBNZX:
+        return BranchTargetAlignCBZ.getValue();
+        break;
+      case AArch64::TBZW:
+      case AArch64::TBZX:
+      case AArch64::TBNZW:
+      case AArch64::TBNZX:
+        return BranchTargetAlignTBZ.getValue();
+        break;
+      case AArch64::Bcc:
+        return BranchTargetAlignBcc.getValue();
+        break;
+      default:
+        return false;
+        break;
+      }
+    }
+
+    return true;
+  } else if (Inst.getNumOperands() == 3) {
+    const MCOperand &FirstOperand = Inst.getOperand(0);
+    const MCOperand &SecondOperand = Inst.getOperand(1);
+    const MCOperand &ThirdOperand = Inst.getOperand(2);
+
+    if (!FirstOperand.isExpr() && !SecondOperand.isExpr() &&
+        !ThirdOperand.isExpr())
+      return false;
+
+    const MCSymbolRefExpr *RefExpr = nullptr;
+
+    if (FirstOperand.isExpr())
+      RefExpr = static_cast<const MCSymbolRefExpr*>(FirstOperand.getExpr());
+    else if (SecondOperand.isExpr())
+      RefExpr = static_cast<const MCSymbolRefExpr*>(SecondOperand.getExpr());
+    else if (ThirdOperand.isExpr())
+      RefExpr = static_cast<const MCSymbolRefExpr*>(ThirdOperand.getExpr());
+
+    if (RefExpr == nullptr)
+      return false;
+
+    uint32_t VK = static_cast<uint32_t>(RefExpr->getKind());
+
+    if (VK > MCSymbolRefExpr::VK_DTPREL) {
+      if (const AArch64MCExpr *AARefExpr =
+          dyn_cast<const AArch64MCExpr>(RefExpr)) {
+        VK = AARefExpr->getKind();
+      } else
+        return false;
+    }
+
+    if (VK == MCSymbolRefExpr::VK_Invalid || VK == MCSymbolRefExpr::VK_None ||
+        VK >= AArch64MCExpr::VK_INVALID || VK == AArch64MCExpr::VK_NONE) {
+      switch (Opcode) {
+      case AArch64::B:
+        return BranchTargetAlignBCond.getValue();
+        break;
+      case AArch64::BL:
+        return BranchTargetAlignBL.getValue();
+        break;
+      case AArch64::BLR:
+        return BranchTargetAlignBLR.getValue();
+        break;
+      case AArch64::CBZW:
+      case AArch64::CBZX:
+      case AArch64::CBNZW:
+      case AArch64::CBNZX:
+        return BranchTargetAlignCBZ.getValue();
+        break;
+      case AArch64::TBZW:
+      case AArch64::TBZX:
+      case AArch64::TBNZW:
+      case AArch64::TBNZX:
+        return BranchTargetAlignTBZ.getValue();
+        break;
+      case AArch64::Bcc:
+        return BranchTargetAlignBcc.getValue();
+        break;
+      default:
+        return false;
+        break;
+      }
+    }
+
+    return true;
+  }
+
+  return false;
+}
+
+unsigned
+AArch64BranchTargetAligner::getBranchTargetAlignment(const MCInst &Inst) {
   unsigned Opcode = Inst.getOpcode();
   unsigned NumOperands = Inst.getNumOperands();
 
   if (isFixup(Opcode) || Opcode == AArch64::NOP || Opcode == AArch64::ADRP)
     return 0;
 
-  if (NumOperands == 0)
+  if (Opcode == AArch64::RET || Opcode == AArch64::RETAA ||
+      Opcode == AArch64::RETAB)
     return BranchTargetAlignment.getValue();
 
-  bool CanAlign = false;
+  bool LabelInst = getBranchLabel(Inst);
+  bool CanAlign = true;
+
+  if (LabelInst)
+    return BranchTargetAlignment.getValue();
+
+  if (!EnableBranchTargetAlignment.getValue())
+    return 0;
 
   for (unsigned I = 0; I < NumOperands; ++I) {
     if (Inst.getOperand(I).isExpr()) {
@@ -222,69 +506,270 @@ unsigned AArch64BranchTargetAligner::getLoopIndexForNoOps(const MCInst &Inst) {
       if (MCE && (MCE->getKind() == MCExpr::Binary ||
                   MCE->getKind() == MCExpr::Constant ||
                   MCE->getKind() == MCExpr::Unary)) {
-        CanAlign = true;
+        switch (Opcode) {
+        case AArch64::B:
+          CanAlign = BranchTargetAlignBCond.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::Bcc:
+          CanAlign = BranchTargetAlignBcc.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::BL:
+          CanAlign = BranchTargetAlignBL.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::BR:
+        case AArch64::BLR:
+        case AArch64::BLRAA:
+        case AArch64::BLRAAZ:
+        case AArch64::BLRAB:
+        case AArch64::BLRABZ:
+          CanAlign = BranchTargetAlignBLR.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::CBZW:
+        case AArch64::CBZX:
+        case AArch64::CBNZW:
+        case AArch64::CBNZX:
+          CanAlign = BranchTargetAlignCBZ.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::TBZW:
+        case AArch64::TBZX:
+        case AArch64::TBNZW:
+        case AArch64::TBNZX:
+          CanAlign = false;
+          goto bailout;
+          break;
+        default:
+          CanAlign = false;
+          goto bailout;
+          break;
+        }
       } else {
-        CanAlign = false;
-        break;
+        switch (Opcode) {
+        case AArch64::B:
+          CanAlign = BranchTargetAlignBCond.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::Bcc:
+          CanAlign = BranchTargetAlignBcc.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::BL:
+          CanAlign = BranchTargetAlignBL.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::BR:
+        case AArch64::BLR:
+        case AArch64::BLRAA:
+        case AArch64::BLRAAZ:
+        case AArch64::BLRAB:
+        case AArch64::BLRABZ:
+          CanAlign = BranchTargetAlignBLR.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::CBZW:
+        case AArch64::CBZX:
+        case AArch64::CBNZW:
+        case AArch64::CBNZX:
+          CanAlign = BranchTargetAlignCBZ.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::TBZW:
+        case AArch64::TBZX:
+        case AArch64::TBNZW:
+        case AArch64::TBNZX:
+          CanAlign = false;
+          goto bailout;
+          break;
+        default:
+          CanAlign = false;
+          goto bailout;
+          break;
+        }
       }
     } else if (Inst.getOperand(I).isInst()) {
       const MCInst *MCI = Inst.getOperand(I).getInst();
       if (MCI && isFixup(MCI->getOpcode())) {
         CanAlign = false;
+        goto bailout;
         break;
       } else {
-        CanAlign = true;
+        switch (Opcode) {
+        case AArch64::B:
+          CanAlign = BranchTargetAlignBCond.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::Bcc:
+          CanAlign = BranchTargetAlignBcc.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::BL:
+          CanAlign = BranchTargetAlignBL.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::BR:
+        case AArch64::BLR:
+        case AArch64::BLRAA:
+        case AArch64::BLRAAZ:
+        case AArch64::BLRAB:
+        case AArch64::BLRABZ:
+          CanAlign = BranchTargetAlignBLR.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::CBZW:
+        case AArch64::CBZX:
+        case AArch64::CBNZW:
+        case AArch64::CBNZX:
+          CanAlign = BranchTargetAlignCBZ.getValue();
+          if (!CanAlign)
+            goto bailout;
+          break;
+        case AArch64::TBZW:
+        case AArch64::TBZX:
+        case AArch64::TBNZW:
+        case AArch64::TBNZX:
+          CanAlign = false;
+          goto bailout;
+          break;
+        default:
+          CanAlign = false;
+          goto bailout;
+          break;
+        }
       }
     } else if (Inst.getOperand(I).isImm()) {
       switch (Opcode) {
       case AArch64::B:
+        CanAlign = BranchTargetAlignBCond.getValue();
+        if (!CanAlign)
+          goto bailout;
+        break;
       case AArch64::Bcc:
+        CanAlign = BranchTargetAlignBcc.getValue();
+        if (!CanAlign)
+          goto bailout;
+        break;
       case AArch64::BL:
-      case AArch64::BLR:
+        CanAlign = BranchTargetAlignBL.getValue();
+        if (!CanAlign)
+          goto bailout;
+        break;
       case AArch64::BR:
+      case AArch64::BLR:
       case AArch64::BLRAA:
       case AArch64::BLRAAZ:
       case AArch64::BLRAB:
       case AArch64::BLRABZ:
+        CanAlign = BranchTargetAlignBLR.getValue();
+        if (!CanAlign)
+          goto bailout;
+        break;
+      case AArch64::CBZW:
+      case AArch64::CBZX:
+      case AArch64::CBNZW:
+      case AArch64::CBNZX:
+        CanAlign = BranchTargetAlignCBZ.getValue();
+        if (!CanAlign)
+          goto bailout;
+        break;
+      case AArch64::TBZW:
+      case AArch64::TBZX:
+      case AArch64::TBNZW:
+      case AArch64::TBNZX:
         CanAlign = false;
+        goto bailout;
         break;
       default:
-        CanAlign = true;
+        CanAlign = false;
+        goto bailout;
         break;
       }
 
       if (!CanAlign)
-        break;
+        goto bailout;
     } else if (Inst.getOperand(I).isFPImm()) {
       CanAlign = false;
+      goto bailout;
       break;
     } else if (Inst.getOperand(I).isReg()) {
       switch (Opcode) {
       case AArch64::B:
+        CanAlign = BranchTargetAlignBCond.getValue();
+        if (!CanAlign)
+          goto bailout;
+        break;
       case AArch64::Bcc:
+        CanAlign = BranchTargetAlignBcc.getValue();
+        if (!CanAlign)
+          goto bailout;
+        break;
       case AArch64::BL:
-      case AArch64::BLR:
+        CanAlign = BranchTargetAlignBL.getValue();
+        if (!CanAlign)
+          goto bailout;
+        break;
       case AArch64::BR:
+      case AArch64::BLR:
       case AArch64::BLRAA:
       case AArch64::BLRAAZ:
       case AArch64::BLRAB:
       case AArch64::BLRABZ:
+        CanAlign = BranchTargetAlignBLR.getValue();
+        if (!CanAlign)
+          goto bailout;
+        break;
+      case AArch64::CBZW:
+      case AArch64::CBZX:
+      case AArch64::CBNZW:
+      case AArch64::CBNZX:
+        CanAlign = BranchTargetAlignCBZ.getValue();
+        if (!CanAlign)
+          goto bailout;
+        break;
+      case AArch64::TBZW:
+      case AArch64::TBZX:
+      case AArch64::TBNZW:
+      case AArch64::TBNZX:
         CanAlign = false;
+        goto bailout;
         break;
       default:
-        CanAlign = true;
+        CanAlign = false;
+        goto bailout;
         break;
       }
 
       if (!CanAlign)
-        break;
+        goto bailout;
     } else if (!Inst.getOperand(I).isValid()) {
       CanAlign = false;
+      goto bailout;
       break;
     }
   }
 
-  return CanAlign ? BranchTargetAlignment.getValue() : 0;
+bailout:
+  if (CanAlign && LabelInst)
+    return BranchTargetAlignment.getValue();
+
+  return 0;
 }
 
 MCInst AArch64BranchTargetAligner::createNopInstruction() {

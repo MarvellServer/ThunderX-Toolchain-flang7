@@ -362,17 +362,35 @@ AArch64MCCodeEmitter::getMoveWideImmOpValue(const MCInst &MI, unsigned OpIdx,
 
 /// getTestBranchTargetOpValue - Return the encoded value for a test-bit-and-
 /// branch target.
-uint32_t AArch64MCCodeEmitter::getTestBranchTargetOpValue(
-    const MCInst &MI, unsigned OpIdx, SmallVectorImpl<MCFixup> &Fixups,
-    const MCSubtargetInfo &STI) const {
+uint32_t
+AArch64MCCodeEmitter::getTestBranchTargetOpValue(const MCInst &MI,
+                      unsigned OpIdx,
+                      SmallVectorImpl<MCFixup> &Fixups,
+                      const MCSubtargetInfo &STI) const {
   const MCOperand &MO = MI.getOperand(OpIdx);
+  unsigned Opcode = MI.getOpcode();
+  unsigned NumOperands = MI.getNumOperands();
 
   // If the destination is an immediate, we have nothing to do.
   if (MO.isImm())
     return MO.getImm();
+
   assert(MO.isExpr() && "Unexpected ADR target type!");
 
-  MCFixupKind Kind = MCFixupKind(AArch64::fixup_aarch64_pcrel_branch14);
+  MCFixupKind Kind;
+
+  switch (Opcode) {
+  case AArch64::TBZW:
+  case AArch64::TBZX:
+  case AArch64::TBNZW:
+  case AArch64::TBNZX:
+    Kind = MCFixupKind(AArch64::fixup_aarch64_pcrel_branch14);
+    break;
+  default:
+    Kind = MCFixupKind(AArch64::fixup_aarch64_pcrel_branch19);
+    break;
+  }
+
   Fixups.push_back(MCFixup::create(0, MO.getExpr(), Kind, MI.getLoc()));
 
   ++MCNumFixups;
@@ -388,10 +406,13 @@ AArch64MCCodeEmitter::getBranchTargetOpValue(const MCInst &MI, unsigned OpIdx,
                                              SmallVectorImpl<MCFixup> &Fixups,
                                              const MCSubtargetInfo &STI) const {
   const MCOperand &MO = MI.getOperand(OpIdx);
+  unsigned Opcode = MI.getOpcode();
+  unsigned NumOperands = MI.getNumOperands();
 
   // If the destination is an immediate, we have nothing to do.
   if (MO.isImm())
     return MO.getImm();
+
   assert(MO.isExpr() && "Unexpected ADR target type!");
 
   MCFixupKind Kind = MI.getOpcode() == AArch64::BL

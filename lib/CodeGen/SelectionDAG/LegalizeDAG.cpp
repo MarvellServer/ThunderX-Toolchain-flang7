@@ -4268,7 +4268,7 @@ void SelectionDAGLegalize::ConvertNodeToLibcall(SDNode *Node) {
     break;
   case ISD::FLGAMMA:
   case ISD::STRICT_FLGAMMA:
-    if (CanUseFiniteLibCall && DAG.getLibInfo().has(LibFunc_lgamma_finite))
+    if (CanUseFiniteLibCall && DAG.getLibInfo().has(LibFunc_lgamma_r_finite))
       Results.push_back(ExpandFPLibCall(Node, RTLIB::LGAMMA_FINITE_F32,
                                         RTLIB::LGAMMA_FINITE_F64,
                                         RTLIB::LGAMMA_FINITE_F80,

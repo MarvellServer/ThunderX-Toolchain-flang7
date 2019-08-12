@@ -48,6 +48,12 @@ class TargetLibraryInfoImpl {
   friend class TargetLibraryInfo;
 
   Triple TT;
+  std::string CPU;
+  std::string Arch;
+  std::string Tune;
+  bool FiniteMathOnly;
+  bool FastMath;
+  bool HasExternalVectorLibMath;
   unsigned char AvailableArray[(NumLibFuncs+3)/4];
   llvm::DenseMap<unsigned, std::string> CustomNames;
   static StringRef const StandardNames[NumLibFuncs];
@@ -198,6 +204,43 @@ public:
   /// Returns the size of the wchar_t type in bytes or 0 if the size is unknown.
   /// This queries the 'wchar_size' metadata.
   unsigned getWCharSize(const Module &M) const;
+
+  /// Set the CPU for this Target.
+  void setCPU(const std::string &Val) {
+    CPU = Val;
+  }
+
+  /// Set the micro-arch optimization for this Target.
+  void setArch(const std::string &Val) {
+    Arch = Val;
+  }
+
+  /// Set the micro-tune optimization for this Target.
+  void setTune(const std::string &Val) {
+    Tune = Val;
+  }
+
+  /// Set the fast-math property for this Target.
+  void setFastMath(bool Val) {
+    FastMath = Val;
+  }
+
+  /// Set the finite-math-only property for this Target.
+  void setFiniteMathOnly(bool Val) {
+    FiniteMathOnly = Val;
+  }
+
+  /// True if TLI is using an external vectorized math library
+  /// like SVML or SLEEF.
+  void setHasExternalVectorLibMath(bool Val) {
+    HasExternalVectorLibMath = Val;
+  }
+
+  bool hasExternalVectorLibMath() const {
+    return HasExternalVectorLibMath;
+  }
+
+  unsigned getMaxVectorWidthForTarget() const;
 };
 
 /// Provides information about what library functions are available for

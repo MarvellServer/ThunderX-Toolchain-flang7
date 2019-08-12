@@ -1455,6 +1455,32 @@ void Clang::AddAArch64TargetArgs(const ArgList &Args,
     else
       CmdArgs.push_back("-aarch64-enable-global-merge=true");
   }
+
+  if (Arg *A = Args.getLastArg(options::OPT_march_EQ)) {
+    const char* MArch = A->getValue();
+    CmdArgs.push_back("-target-arch");
+    CmdArgs.push_back(MArch);
+  }
+
+  if (Arg *A = Args.getLastArg(options::OPT_mtune_EQ)) {
+    const char* MTune = A->getValue();
+    CmdArgs.push_back("-target-tune");
+    CmdArgs.push_back(MTune);
+  }
+
+  if (Arg *A = Args.getLastArg(options::OPT_ffinite_math_only))
+    CmdArgs.push_back("-target-finite-math");
+
+  if (Arg *A = Args.getLastArg(options::OPT_ffast_math))
+    CmdArgs.push_back("-target-fast-math");
+
+  if (Arg *A = Args.getLastArg(options::OPT_ffp_contract)) {
+    if (!Args.getLastArg(options::OPT_ffast_math)) {
+      StringRef V = A->getValue();
+      if (V == "fast")
+        CmdArgs.push_back("-target-fast-math");
+    }
+  }
 }
 
 void Clang::AddMIPSTargetArgs(const ArgList &Args,
@@ -1739,6 +1765,32 @@ void Clang::AddX86TargetArgs(const ArgList &Args,
     CmdArgs.push_back("-mfloat-abi");
     CmdArgs.push_back("soft");
     CmdArgs.push_back("-mstack-alignment=4");
+  }
+
+  if (Arg *A = Args.getLastArg(options::OPT_march_EQ)) {
+    const char* MArch = A->getValue();
+    CmdArgs.push_back("-target-arch");
+    CmdArgs.push_back(MArch);
+  }
+
+  if (Arg *A = Args.getLastArg(options::OPT_mtune_EQ)) {
+    const char* MTune = A->getValue();
+    CmdArgs.push_back("-target-tune");
+    CmdArgs.push_back(MTune);
+  }
+
+  if (Arg *A = Args.getLastArg(options::OPT_ffinite_math_only))
+    CmdArgs.push_back("-target-finite-math");
+
+  if (Arg *A = Args.getLastArg(options::OPT_ffast_math))
+    CmdArgs.push_back("-target-fast-math");
+
+  if (Arg *A = Args.getLastArg(options::OPT_ffp_contract)) {
+    if (!Args.getLastArg(options::OPT_ffast_math)) {
+      StringRef V = A->getValue();
+      if (V == "fast")
+        CmdArgs.push_back("-target-fast-math");
+    }
   }
 }
 

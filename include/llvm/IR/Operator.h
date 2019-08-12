@@ -318,6 +318,13 @@ public:
             (SubclassOptionalData & FastMathFlags::ApproxFunc) != 0);
   }
 
+  /// Test is this operation allows NaN's and Inf's (finite math).
+  bool isFiniteMathOnly() const {
+    return ((SubclassOptionalData & FastMathFlags::NoNaNs) != 0 &&
+            (SubclassOptionalData & FastMathFlags::NoInfs) != 0 &&
+            !isFast());
+  }
+
   /// Test if this operation may be simplified with reassociative transforms.
   bool hasAllowReassoc() const {
     return (SubclassOptionalData & FastMathFlags::AllowReassoc) != 0;

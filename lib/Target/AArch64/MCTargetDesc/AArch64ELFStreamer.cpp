@@ -22,6 +22,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/MC/MCAsmBackend.h"
+#include "llvm/MC/MCAsmLayout.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
@@ -121,18 +122,15 @@ public:
     EmitA64MappingSymbol();
     MCELFStreamer::EmitInstruction(Inst, STI);
 
-    unsigned Opcode = Inst.getOpcode();
     AArch64BranchTargetAligner BTA;
+    unsigned Opcode = Inst.getOpcode();
 
     if (BTA.needsSpecialAlignment(STI.getCPU(), Opcode)) {
-      MCInst NopInst = BTA.createNopInstruction();
-      unsigned LI = BTA.getLoopIndexForNoOps(Inst);
+      unsigned BA = BTA.getBranchTargetAlignment(Inst);
 
-      if (LI) {
-        for (unsigned I = 0; I < LI; ++I) {
-          EmitA64MappingSymbol();
-          MCELFStreamer::EmitInstruction(NopInst, STI);
-        }
+      if (BA) {
+        EmitA64MappingSymbol();
+        MCELFStreamer::EmitCodeAlignment(BA);
       }
     }
   }

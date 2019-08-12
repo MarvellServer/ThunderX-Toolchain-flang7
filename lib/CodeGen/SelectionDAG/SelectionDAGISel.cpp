@@ -101,10 +101,6 @@
 
 using namespace llvm;
 
-// #### DEBUG ONLY
-#include <iostream>
-// #### DEBUG ONLY
-
 #define DEBUG_TYPE "isel"
 
 STATISTIC(NumFastIselFailures, "Number of instructions fast isel failed on");
@@ -3704,13 +3700,6 @@ void SelectionDAGISel::SelectCodeCommon(SDNode *NodeToMatch,
     LLVM_DEBUG(dbgs() << "  Match failed at index " << CurrentOpcodeIndex
                       << "\n");
 
-#if 0
-    // #### DEBUG ONLY
-    std::cerr << __PRETTY_FUNCTION__
-      << ": Match failed at index " << CurrentOpcodeIndex << std::endl;
-    // #### DEBUG ONLY
-#endif
-
     ++NumDAGIselRetries;
 
     while (true) {
@@ -3792,15 +3781,6 @@ void SelectionDAGISel::CannotYetSelect(SDNode *N) {
     bool HasInputChain = N->getOperand(0).getValueType() == MVT::Other;
     unsigned iid =
       cast<ConstantSDNode>(N->getOperand(HasInputChain))->getZExtValue();
-
-#if 0
-    // #### DEBUG ONLY
-    std::cerr << __PRETTY_FUNCTION__
-      << ": iid=" << static_cast<unsigned>(iid)
-      << " Intrinsic::num_intrinsics="
-      << static_cast<unsigned>(Intrinsic::num_intrinsics) << std::endl;
-    // #### DEBUG ONLY
-#endif
 
     if (iid < Intrinsic::num_intrinsics)
       Msg << "intrinsic %" << Intrinsic::getName((Intrinsic::ID)iid, None);

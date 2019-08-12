@@ -1,9 +1,8 @@
 //===-- TargetLibraryInfo.def - Library information -------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -297,6 +296,15 @@ TLI_DEFINE_STRING_INTERNAL("__expf_finite")
 /// long double __expl_finite(long double x);
 TLI_DEFINE_ENUM_INTERNAL(expl_finite)
 TLI_DEFINE_STRING_INTERNAL("__expl_finite")
+/// double __gamma_r_finite(double x, int* s);
+TLI_DEFINE_ENUM_INTERNAL(tgamma_finite)
+TLI_DEFINE_STRING_INTERNAL("__gamma_r_finite")
+/// float __gammaf_r_finite(float x, int* s);
+TLI_DEFINE_ENUM_INTERNAL(tgammaf_finite)
+TLI_DEFINE_STRING_INTERNAL("__gammaf_r_finite")
+/// long double __gammal_r_finite(long double x, int* s);
+TLI_DEFINE_ENUM_INTERNAL(tgammal_finite)
+TLI_DEFINE_STRING_INTERNAL("__gammal_r_finite")
 /// int __isoc99_scanf (const char *format, ...)
 TLI_DEFINE_ENUM_INTERNAL(dunder_isoc99_scanf)
 TLI_DEFINE_STRING_INTERNAL("__isoc99_scanf")
@@ -304,13 +312,13 @@ TLI_DEFINE_STRING_INTERNAL("__isoc99_scanf")
 TLI_DEFINE_ENUM_INTERNAL(dunder_isoc99_sscanf)
 TLI_DEFINE_STRING_INTERNAL("__isoc99_sscanf")
 /// double __lgamma_r_finite(double x, int* s);
-TLI_DEFINE_ENUM_INTERNAL(lgamma_finite)
+TLI_DEFINE_ENUM_INTERNAL(lgamma_r_finite)
 TLI_DEFINE_STRING_INTERNAL("__lgamma_r_finite")
 /// float __lgammaf_r_finite(float x, int* s);
-TLI_DEFINE_ENUM_INTERNAL(lgammaf_finite)
+TLI_DEFINE_ENUM_INTERNAL(lgammaf_r_finite)
 TLI_DEFINE_STRING_INTERNAL("__lgammaf_r_finite")
 /// long double __lgammal_r_finite(long double x, int* s);
-TLI_DEFINE_ENUM_INTERNAL(lgammal_finite)
+TLI_DEFINE_ENUM_INTERNAL(lgammal_r_finite)
 TLI_DEFINE_STRING_INTERNAL("__lgammal_r_finite")
 /// double __log10_finite(double x);
 TLI_DEFINE_ENUM_INTERNAL(log10_finite)
@@ -862,12 +870,21 @@ TLI_DEFINE_STRING_INTERNAL("ldexpl")
 /// double lgamma(double x);
 TLI_DEFINE_ENUM_INTERNAL(lgamma)
 TLI_DEFINE_STRING_INTERNAL("lgamma")
+/// double lgamma_r, (double, int *);
+TLI_DEFINE_ENUM_INTERNAL(lgamma_r)
+TLI_DEFINE_STRING_INTERNAL("lgamma_r")
 /// float lgammaf(float x);
 TLI_DEFINE_ENUM_INTERNAL(lgammaf)
 TLI_DEFINE_STRING_INTERNAL("lgammaf")
+/// double lgammaf_r (float, int *);
+TLI_DEFINE_ENUM_INTERNAL(lgammaf_r)
+TLI_DEFINE_STRING_INTERNAL("lgammaf_r")
 /// long double lgammal(long double x);
 TLI_DEFINE_ENUM_INTERNAL(lgammal)
 TLI_DEFINE_STRING_INTERNAL("lgammal")
+/// double lgammal_r (long double, int *);
+TLI_DEFINE_ENUM_INTERNAL(lgammal_r)
+TLI_DEFINE_STRING_INTERNAL("lgammal_r")
 /// long long int llabs(long long int j);
 TLI_DEFINE_ENUM_INTERNAL(llabs)
 TLI_DEFINE_STRING_INTERNAL("llabs")

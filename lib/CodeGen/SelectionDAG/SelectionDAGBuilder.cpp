@@ -4886,7 +4886,7 @@ static SDValue ExpandPowI(const SDLoc &DL, SDValue LHS, SDValue RHS,
 // function name for the experimental Intrinsics.
 static const char*
 expandExperimentalIntrinsics(const llvm::EVT &OpEVT, unsigned Opcode,
-                             bool IsFastMath) {
+                             bool IsFastMath, bool IsFiniteMathOnly) {
   llvm::MVT OpMVT;
 
   if (OpEVT.isVector())
@@ -4968,7 +4968,7 @@ expandExperimentalIntrinsics(const llvm::EVT &OpEVT, unsigned Opcode,
     break;
   case ISD::FLGAMMA:
     if (!OpMVT.isVector()) {
-      if (IsFastMath)
+      if (IsFastMath || IsFiniteMathOnly)
         return OpMVT == MVT::f32 ? "__lgammaf_r_finite" :
                                  OpMVT == MVT::f64 ? "__lgamma_r_finite" :
                                                    "__lgammal_r_finite";
@@ -5669,10 +5669,14 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
 
     llvm::EVT OpEVT = getValue(I.getArgOperand(0)).getValueType();
     bool IsFastMath = false;
-    if (const FPMathOperator *FPOp = dyn_cast<const FPMathOperator>(&I))
-      if (FPOp->getFastMathFlags().isFast())
-        IsFastMath = true;
-    return expandExperimentalIntrinsics(OpEVT, Opcode, IsFastMath);
+    bool IsFiniteMathOnly = false;
+    if (const FPMathOperator *FPOp = dyn_cast<const FPMathOperator>(&I)) {
+      IsFastMath = FPOp->isFast();
+      IsFiniteMathOnly = FPOp->isFiniteMathOnly();
+    }
+
+    return expandExperimentalIntrinsics(OpEVT, Opcode, IsFastMath,
+                                        IsFiniteMathOnly);
   }
   // End New Intrinsics.
 
@@ -7211,16 +7215,25 @@ void SelectionDAGBuilder::visitCall(const CallInst &I) {
         if (visitUnaryFloatCall(I, ISD::FLGAMMA))
           return;
         break;
-      case LibFunc_lgamma_finite:
-      case LibFunc_lgammaf_finite:
-      case LibFunc_lgammal_finite:
-        if (visitBinaryFloatCall(I, ISD::FLGAMMA))
-          return;
-        break;
       case LibFunc_tgamma:
       case LibFunc_tgammaf:
       case LibFunc_tgammal:
         if (visitUnaryFloatCall(I, ISD::FTGAMMA))
+          return;
+        break;
+      case LibFunc_lgamma_r:
+      case LibFunc_lgammaf_r:
+      case LibFunc_lgammal_r:
+      case LibFunc_lgamma_r_finite:
+      case LibFunc_lgammaf_r_finite:
+      case LibFunc_lgammal_r_finite:
+        if (visitBinaryFloatCall(I, ISD::FLGAMMA))
+          return;
+        break;
+      case LibFunc_tgamma_finite:
+      case LibFunc_tgammaf_finite:
+      case LibFunc_tgammal_finite:
+        if (visitBinaryFloatCall(I, ISD::FTGAMMA))
           return;
         break;
       case LibFunc_exp10:

@@ -21,13 +21,21 @@ let Flags = [CC1Option, CC1AsOption, NoDriverOption] in {
 
 def target_cpu : Separate<["-"], "target-cpu">,
   HelpText<"Target a specific cpu type">;
+def target_arch : Separate<["-"], "target-arch">,
+  HelpText<"Target a specific cpu micro-arch type">;
+def target_tune : Separate<["-"], "target-tune">,
+  HelpText<"Target a specific cpu micro-tune type">;
+def target_fast_math : Flag<["-"], "target-fast-math">,
+  HelpText<"Only use fast (possibly imprecise) math.">;
+def target_finite_math : Flag<["-"], "target-finite-math">,
+  HelpText<"Only use finite math.">;
+
 def target_feature : Separate<["-"], "target-feature">,
   HelpText<"Target specific attributes">;
 def triple : Separate<["-"], "triple">,
   HelpText<"Specify target triple (e.g. i686-apple-darwin9)">;
 def target_abi : Separate<["-"], "target-abi">,
   HelpText<"Target a particular ABI type">;
-
 }
 
 def target_linker_version : Separate<["-"], "target-linker-version">,
