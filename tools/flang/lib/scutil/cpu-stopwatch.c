@@ -26,7 +26,7 @@
 #include "scutil.h"
 
 unsigned long
-getcpu(void)
+getflangcpu(void)
 {
   static long ticks_per_second = -1;
   static unsigned long last = 0;

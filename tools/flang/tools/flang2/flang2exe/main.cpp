@@ -202,7 +202,7 @@ llvm_restart:
     if (malloc_verify() != 1)
       interr("main: malloc_verify failsB", errno, ERR_Fatal);
 #endif
-  xtimes[0] += getcpu();
+  xtimes[0] += getflangcpu();
   /* don't increment if it is outlined function because it
    * uses STATICS/BSS from host routine.
    */
@@ -223,7 +223,7 @@ llvm_restart:
   }
 
   is_constructor = gbl.cuda_constructor;
-  xtimes[1] += getcpu();
+  xtimes[1] += getflangcpu();
   DUMP("upper");
 
   if (gbl.cuda_constructor) {
@@ -328,13 +328,13 @@ llvm_restart:
         TR("F90 SCHEDULER begins\n");
         DUMP("before-schedule");
         schedule();
-        xtimes[5] += getcpu();
+        xtimes[5] += getflangcpu();
         DUMP("schedule");
       } /* CUDAG(GBL_CURRFUNC) & CUDA_HOST */
     }
     TR("F90 ASSEMBLER begins\n");
     assemble();
-    xtimes[6] += getcpu();
+    xtimes[6] += getflangcpu();
     upper_save_syminfo();
   }
   if (DBGBIT(5, 4))
@@ -363,7 +363,7 @@ llvm_restart:
 
   if (flg.xref) {
     xref(); /* write cross reference map */
-    xtimes[7] += getcpu();
+    xtimes[7] += getflangcpu();
   }
   (void)summary(false, 0);
   cg_llvm_fnend();
@@ -384,7 +384,7 @@ main(int argc, char *argv[])
   bool need_constructor = false;
   int accel_cnt, accel_vendor = 0;
 
-  getcpu();
+  getflangcpu();
   init(argc, argv);
 
   saveoptflag = flg.opt;

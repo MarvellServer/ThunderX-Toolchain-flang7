@@ -58,7 +58,8 @@ typedef struct {
   double imag;
 } dcmplx_t;
 
-#if defined(__PGIC__) || defined(__clang__) || defined(__GNUC__)
+#if defined(__PGIC__) || defined(__clang__) || defined(__GNUC__) && \
+	(__GNUC__ <= 7)
 #undef	creal
 #define creal(x) __builtin_creal(x)
 double __builtin_creal(double complex);
