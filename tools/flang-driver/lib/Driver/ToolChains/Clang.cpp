@@ -2216,7 +2216,7 @@ static void RenderFloatingPointOptions(const ToolChain &TC, const Driver &D,
       break;
     case options::OPT_fveclib:
       MathVeclib = A->getValue();
-      if (MathVeclib == "SLEEF")
+      if (MathVeclib == "SLEEF" || MathVeclib == "PGMATH")
         HasLibMathVeclib = true;
       break;
     }

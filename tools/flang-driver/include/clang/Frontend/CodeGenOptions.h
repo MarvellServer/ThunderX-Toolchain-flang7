@@ -54,13 +54,10 @@ public:
   enum VectorLibrary {
     NoLibrary,  // Don't use any vector library.
     Accelerate, // Use the Accelerate framework.
-#ifdef FLANG_LLVM_EXTENSIONS
     PGMATH,     // PGI math library.
-#endif
     SVML,       // Intel short vector math library.
-    SLEEF       // SLEEF - SIMD Library for Evaluating Elementary Functions.
+    SLEEF      // SLEEF - SIMD Library for Evaluating Elementary Functions.
   };
-
 
   enum ObjCDispatchMethodKind {
     Legacy = 0,

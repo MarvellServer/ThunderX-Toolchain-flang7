@@ -609,11 +609,8 @@ static bool ParseCodeGenArgs(CodeGenOptions &Opts, ArgList &Args, InputKind IK,
       else
         Diags.Report(diag::err_drv_unsupported_opt_for_target)
           << Name << TS.c_str();
-    }
-#ifdef FLANG_LLVM_EXTENSIONS
-    else if (Name == "PGMATH")
+    } else if (Name == "PGMATH")
       Opts.setVecLib(CodeGenOptions::PGMATH);
-#endif
     else if (Name == "none")
       Opts.setVecLib(CodeGenOptions::NoLibrary);
     else

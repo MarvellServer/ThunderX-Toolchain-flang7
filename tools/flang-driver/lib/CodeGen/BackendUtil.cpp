@@ -350,11 +350,15 @@ static TargetLibraryInfoImpl *createTLII(llvm::Triple &TargetTriple,
     TLII->setHasExternalVectorLibMath(true);
     TLII->addVectorizableFunctionsFromVecLib(TargetLibraryInfoImpl::SLEEF);
     break;
-#ifdef FLANG_LLVM_EXTENSIONS
   case CodeGenOptions::PGMATH:
+    TLII->setCPU(TOpts.CPU);
+    TLII->setArch(TOpts.Arch);
+    TLII->setTune(TOpts.Tune);
+    TLII->setFastMath(TOpts.FastMath);
+    TLII->setFiniteMathOnly(TOpts.FiniteMathOnly);
+    TLII->setHasExternalVectorLibMath(true);
     TLII->addVectorizableFunctionsFromVecLib(TargetLibraryInfoImpl::PGMATH);
     break;
-#endif
   default:
     break;
   }

@@ -95,7 +95,8 @@ public:
     NoLibrary,  // Don't use any vector library.
     Accelerate, // Use Accelerate framework.
     SVML,       // Intel short vector math library.
-    SLEEF       // SLEEF - SIMD Library for Evaluating Elementary Functions.
+    SLEEF,      // SLEEF - SIMD Library for Evaluating Elementary Functions.
+    PGMATH      // PGI Math Library.
   };
 
   TargetLibraryInfoImpl();

@@ -5095,7 +5095,8 @@ LoopVectorizationCostModel::getSmallestAndWidestTypes() {
         continue;
 
       // Only examine Loads, Stores and PHINodes.
-      if (!isa<LoadInst>(I) && !isa<StoreInst>(I) && !isa<PHINode>(I))
+      if (!isa<LoadInst>(I) && !isa<StoreInst>(I) && !isa<PHINode>(I) &&
+          !isa<FPExtInst>(I) && !isa<SIToFPInst>(I) && !isa<UIToFPInst>(I))
         continue;
 
       // Examine PHI nodes that are reduction variables. Update the type to
