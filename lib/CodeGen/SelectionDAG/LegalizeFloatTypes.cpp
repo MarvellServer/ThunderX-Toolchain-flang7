@@ -1662,11 +1662,15 @@ void DAGTypeLegalizer::ExpandFloatRes_FATAN(SDNode *N,
 
 void DAGTypeLegalizer::ExpandFloatRes_FATAN2(SDNode *N,
                                              SDValue &Lo, SDValue &Hi) {
-  SDValue Call = LibCallify(GetFPLibCall(N->getValueType(0),
-                                         RTLIB::ATAN2_F32, RTLIB::ATAN2_F64,
-                                         RTLIB::ATAN2_F80, RTLIB::ATAN2_F128,
-                                         RTLIB::ATAN2_PPCF128),
-                            N, false);
+  SDValue Ops[2] = { N->getOperand(0), N->getOperand(1) };
+  SDValue Call = TLI.makeLibCall(DAG, GetFPLibCall(N->getValueType(0),
+                                                   RTLIB::ATAN2_F32,
+                                                   RTLIB::ATAN2_F64,
+                                                   RTLIB::ATAN2_F80,
+                                                   RTLIB::ATAN2_F128,
+                                                   RTLIB::ATAN2_PPCF128),
+                                 N->getValueType(0), Ops, false,
+                                 SDLoc(N)).first;
   GetPairElements(Call, Lo, Hi);
 }
 
